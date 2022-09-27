@@ -14,35 +14,60 @@ using namespace std;
 
 #include "Shader.hpp"
 
-GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path){
+GLuint
+load(const char *vertex_shader_path, const char *fragment_shader_path)
+{
+	GLuint vertex_shader_id = glCreateShader(GL_VERTEX_SHADER);
+	GLuint fragment_shader_id = glCreateShader(GL_FRAGMENT_SHADER);
 
-	// Create the shaders
-	GLuint VertexShaderID = glCreateShader(GL_VERTEX_SHADER);
-	GLuint FragmentShaderID = glCreateShader(GL_FRAGMENT_SHADER);
+   FILE *vertex_shader_file = fopen(vertex_shader_path, "r");
+   char *vertex_shader_code;
+   if (vertex_shader_file)
+   {
+      fseek(vertex_shader_file, 0, SEEK_END);
+      long vertex_shader_code_length = ftell(vertex_shader_file);
+      fseek(vertex_shader_file, 0, SEEK_SET);
+      vertex_shader_code = (char *)malloc(file_length+1);
+      fread(vertex_shader_code, 1, vertex_shader_code_length, vertex_shader_file);
+      vertex_shader_code[vertex_shader_code_length] = 0;
+      fclose(vertex_shader_file);
+   }
+   else
+      return 0;
 
-	// Read the Vertex Shader code from the file
-	std::string VertexShaderCode;
-	std::ifstream VertexShaderStream(vertex_file_path, std::ios::in);
-	if(VertexShaderStream.is_open()){
-		std::stringstream sstr;
-		sstr << VertexShaderStream.rdbuf();
-		VertexShaderCode = sstr.str();
-		VertexShaderStream.close();
-	}else{
-		printf("Impossible to open %s. Are you in the right directory ? Don't forget to read the FAQ !\n", vertex_file_path);
-		getchar();
-		return 0;
-	}
+   FILE *fragment_shader_file = fopen(fragment_shader_path, "r");
+   char *fragment_shader_code;
+   if (fragment_shader_file)
+   {
+      fseek(fragment_shader_file, 0, SEEK_END);
+      long fragment_shader_code_length = ftell(fragment_shader_file);
+      fseek(fragment_shader_file, 0, SEEK_SET);
+      fragment_shader_code = (char *)malloc(file_length+1);
+      fread(fragment_shader_code, 1, fragment_shader_code_length, fragment_shader_file);
+      fragment_shader_code[fragment_shader_code_length] = 0;
+      fclose(fragment_shader_file);
+   }
+   else
+   {
+      free(vertex_shader_code);
+      return 0;
+   }
 
-	// Read the Fragment Shader code from the file
-	std::string FragmentShaderCode;
-	std::ifstream FragmentShaderStream(fragment_file_path, std::ios::in);
-	if(FragmentShaderStream.is_open()){
-		std::stringstream sstr;
-		sstr << FragmentShaderStream.rdbuf();
-		FragmentShaderCode = sstr.str();
-		FragmentShaderStream.close();
-	}
+   // Compile shaders.
+   glShaderSource(vertex_shader_id, 1, &vertex_shader_code, 0);
+   glCompileShader(vertex_shader_id);
+
+   GLint vertex_shader_compile_status;
+   int info_log_length;
+   glGetShaderiv(vertex_shader_id, GL_COMPILE_STATUS, &vertex_shader_compile_status);
+   glGetShaderiv(vertex_shader_id, GL_INFO_LOG_LENGTH, &info_log_length);
+
+   glShaderSource(fragment_shader_id, 1, &fragment_shader_code, 0);
+   glCompileShader(fragment_shader_id);
+
+
+   free(vertex_shader_code);
+   free(fragment_shader_code);
 
 	GLint Result = GL_FALSE;
 	int InfoLogLength;
@@ -97,14 +122,12 @@ GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path
 		printf("%s\n", &ProgramErrorMessage[0]);
 	}
 
-	
+
 	glDetachShader(ProgramID, VertexShaderID);
 	glDetachShader(ProgramID, FragmentShaderID);
-	
+
 	glDeleteShader(VertexShaderID);
 	glDeleteShader(FragmentShaderID);
 
 	return ProgramID;
 }
-
-

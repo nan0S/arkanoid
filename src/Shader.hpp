@@ -1,6 +1,9 @@
-#ifndef SHADER_HPP
-#define SHADER_HPP
+#pragma once
 
-GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path);
+namespace Shader
+{
 
-#endif
+GLuint
+load(const char *vertex_file_path, const char *fragment_file_path);
+
+}
