@@ -1,0 +1,47 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/g++",
+      "-std=c++17",
+      "-Wall",
+      "-Wextra",
+      "-c",
+      "-o",
+      "main.o",
+      "main.cpp"
+    ],
+    "directory": "/home/hubert/desktop/programs/studies/pgk/lists/l2/src",
+    "file": "/home/hubert/desktop/programs/studies/pgk/lists/l2/src/main.cpp",
+    "output": "/home/hubert/desktop/programs/studies/pgk/lists/l2/src/main.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/g++",
+      "-std=c++17",
+      "-Wall",
+      "-Wextra",
+      "-c",
+      "-o",
+      "Window.o",
+      "Window.cpp"
+    ],
+    "directory": "/home/hubert/desktop/programs/studies/pgk/lists/l2/src",
+    "file": "/home/hubert/desktop/programs/studies/pgk/lists/l2/src/Window.cpp",
+    "output": "/home/hubert/desktop/programs/studies/pgk/lists/l2/src/Window.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/g++",
+      "-std=c++17",
+      "-Wall",
+      "-Wextra",
+      "-c",
+      "-o",
+      "Game.o",
+      "Game.cpp"
+    ],
+    "directory": "/home/hubert/desktop/programs/studies/pgk/lists/l2/src",
+    "file": "/home/hubert/desktop/programs/studies/pgk/lists/l2/src/Game.cpp",
+    "output": "/home/hubert/desktop/programs/studies/pgk/lists/l2/src/Game.o"
+  }
+]

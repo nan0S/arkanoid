@@ -31,13 +31,21 @@ void Game::start()
 
 void Game::initGame()
 {
-    standard_shader = LoadShaders("../shader/standardVertexShader.glsl", "../shader/standardFragmentShader.glsl");
-    bg_shader = LoadShaders("../shader/bgVertexShader.glsl", "../shader/bgFragmentShader.glsl");
+    standard_shader = Shader::load("../shader/standardVertexShader.glsl", "../shader/standardFragmentShader.glsl");
+    if (!standard_shader)
+    {
+       fprintf(stderr, "Failed to load standard shader.\n");
+       exit(EXIT_FAILURE);
+    }
 
-    glm::vec2 points[] = { glm::vec2(-1.0f, 1.0f),
-                           glm::vec2(-1.0f, -1.0f),
-                           glm::vec2(1.0f, 1.0f),
-                           glm::vec2(1.0f, -1.0f)};
+    bg_shader = Shader::load("../shader/bgVertexShader.glsl", "../shader/bgFragmentShader.glsl");
+    if (!bg_shader)
+    {
+       fprintf(stderr, "Failed to load background shader.\n");
+       exit(EXIT_FAILURE);
+    }
+
+    glm::vec2 points[] = {};
 
     glGenBuffers(1, &bg_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, bg_buffer);
@@ -67,7 +75,7 @@ void Game::run()
     glGenVertexArrays(1, &vertexArrayID);
     glBindVertexArray(vertexArrayID);
 
-    glUseProgram(standard_shader);  
+    glUseProgram(standard_shader);
 
     while (!Window::windowShouldClose())
     {
@@ -93,7 +101,7 @@ void Game::run()
 
 void Game::draw()
 {
-    Window::clear();  
+    Window::clear();
 
     glUseProgram(bg_shader);
 
@@ -101,7 +109,7 @@ void Game::draw()
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2) , (void*)0);
     glEnableVertexAttribArray(0);
     glUniform1f(glGetUniformLocation(bg_shader, "time"), glfwGetTime());
-    
+
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
     glUseProgram(standard_shader);

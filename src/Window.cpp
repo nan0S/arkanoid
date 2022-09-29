@@ -13,7 +13,6 @@ bool Window::create(int w, int h, std::string title)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     width = w; height = h;
-    window = glfwCreateWindow(width, height, title.c_str(), NULL, NULL);
     if (window == NULL)
         return false;
     glfwMakeContextCurrent(window);
@@ -55,5 +54,5 @@ void Window::clear()
 
 void Window::display()
 {
-    glfwSwapBuffers(window); 
+    glfwSwapBuffers(window);
 }
