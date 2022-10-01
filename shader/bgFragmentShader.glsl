@@ -29,11 +29,11 @@ void main()
     {
         if (x - y > 0)
             color = vec3(34.5f / 255, 15.0f / 255, 31.0f / 255);
-        else    
+        else
             color = vec3(50.5f / 255, 15.0f / 255, 31.0f / 255);
     }
 
     float mult = abs(cos(time)) * (1.0f - abs(position.x));
     mult = constrain(mult, 0.0f, 1.0f, 0.6f, 1.0f);
-    color *= mult * 2.0f;
+    color *= mult * 5.0f;
 }

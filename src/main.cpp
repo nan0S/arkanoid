@@ -4,11 +4,11 @@ int main2();
 
 int main()
 {
-   return main2();
-   // Game game;
-   // game.start();
-//
-   // return 0;
+   // return main2();
+   Game game;
+   game.start();
+
+   return 0;
 }
 
 void window_resize_handler(GLFWwindow *, int width, int height)
@@ -70,40 +70,109 @@ int main2()
       return EXIT_FAILURE;
    }
 
-   GLint time_uniform = glGetUniformLocation(bg_shader, "time");
+   GLint bg_shader_time_uniform = glGetUniformLocation(bg_shader, "time");
 
    GLuint vao;
    glGenVertexArrays(1, &vao);
    glBindVertexArray(vao);
 
-   glm::vec2 corners[] =
-   {
-      glm::vec2(-1.0f, 1.0f),
-      glm::vec2(-1.0f, -1.0f),
-      glm::vec2(1.0f, 1.0f),
-      glm::vec2(1.0f, -1.0f)
+   // TODO(hobrzut): Subscope.
+   glm::vec2 screen_corners[] = {
+      { -1.0f, 1.0f },
+      { -1.0f, -1.0f },
+      { 1.0f, 1.0f },
+      { 1.0f, -1.0f }
    };
 
    GLuint bg_vbo;
    glGenBuffers(1, &bg_vbo);
    glBindBuffer(GL_ARRAY_BUFFER, bg_vbo);
-   glBufferData(GL_ARRAY_BUFFER, sizeof(corners), corners, GL_STATIC_DRAW);
+   glBufferData(GL_ARRAY_BUFFER, sizeof(screen_corners), screen_corners, GL_STATIC_DRAW);
    glEnableVertexAttribArray(0);
-   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), 0);
+   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+   glm::vec2 player_points[] = {
+      { 0.0f, 0.0f },
+      { -0.1f, 0.00f },
+      { -0.06f, 0.04f },
+      { -0.03f, 0.05f },
+      { 0.03f, 0.05f },
+      { 0.06f, 0.04f },
+      { 0.1f, 0.0f }
+   };
+
+   // TODO(hobrzut): Subscope.
+   GLuint player_vbo;
+   glGenBuffers(1, &player_vbo);
+   glBindBuffer(GL_ARRAY_BUFFER, player_vbo);
+   glBufferData(GL_ARRAY_BUFFER, sizeof(player_points), player_points, GL_STATIC_DRAW);
+   glEnableVertexAttribArray(0);
+   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+   GLint standard_shader_translate_uniform = glGetUniformLocation(standard_shader, "translate");
+   GLint standard_shader_color_uniform = glGetUniformLocation(standard_shader, "color");
+
+   bool paused = false;
+   int p_last_state = GLFW_RELEASE;
+   float bg_time = 0;
+   glm::vec2 player_translate = {};
 
    while (!glfwWindowShouldClose(window))
    {
-      float now = glfwGetTime();
+      if (paused)
+         glfwWaitEvents();
+      else
+         glfwPollEvents();
 
-      glfwPollEvents();
-      if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+      float begin_time = glfwGetTime();
+
+      if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS ||
+          glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
          break;
 
-      glClear(GL_COLOR_BUFFER_BIT);
-      glUseProgram(bg_shader);
-      glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-      glUniform1f(time_uniform, now);
-      glfwSwapBuffers(window);
+      int p_state = glfwGetKey(window, GLFW_KEY_P);
+      if (p_state == GLFW_PRESS && p_last_state == GLFW_RELEASE)
+         paused = !paused;
+      p_last_state = p_state;
+
+      if (!paused)
+      {
+         glClear(GL_COLOR_BUFFER_BIT);
+
+         /* Draw background. */
+         glUseProgram(bg_shader);
+         glBindBuffer(GL_ARRAY_BUFFER, bg_vbo);
+         glEnableVertexAttribArray(0);
+         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+         glUniform1f(bg_shader_time_uniform, bg_time);
+         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+         glDisableVertexAttribArray(0);
+
+         /* Draw player. */
+         glUseProgram(standard_shader);
+         glBindBuffer(GL_ARRAY_BUFFER, player_vbo);
+         glEnableVertexAttribArray(0);
+         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+         glUniform2f(standard_shader_translate_uniform, player_translate.x + 0.02f, player_translate.y - 0.015f);
+         glUniform3f(standard_shader_color_uniform, 0.f, 0.f, 0.f);
+         glDrawArrays(GL_TRIANGLE_FAN, 0, 7);
+
+         glUniform2f(standard_shader_translate_uniform, player_translate.x, player_translate.y);
+         glUniform3f(standard_shader_color_uniform,  80.f/255, 120.f/255, 111.f/255);
+         glDrawArrays(GL_TRIANGLE_FAN, 0, 7);
+
+         glUniform3f(standard_shader_color_uniform,  24.f/255, 100.f/255, 97.f/255);
+         glDrawArrays(GL_TRIANGLE_FAN, 7, 7);
+
+         glDisableVertexAttribArray(0);
+
+         glfwSwapBuffers(window);
+
+         bg_time += glfwGetTime() - begin_time;
+      }
    }
 
    // GLuint game_shader = Load

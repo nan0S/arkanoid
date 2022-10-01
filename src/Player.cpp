@@ -6,12 +6,12 @@ void Player::init()
 
     glm::vec2 points[14] = {glm::vec2(0.0f, 0.0f),
                             glm::vec2(-0.1f, 0.00f),
-                            glm::vec2(-0.06f, 0.04f), 
+                            glm::vec2(-0.06f, 0.04f),
                             glm::vec2(-0.03f, 0.05f),
-                            glm::vec2(0.03f, 0.05f), 
-                            glm::vec2(0.06f, 0.04f), 
+                            glm::vec2(0.03f, 0.05f),
+                            glm::vec2(0.06f, 0.04f),
                             glm::vec2(0.1f, 0.0f)};
-    
+
     for (int i = 0; i < 7; ++i)
         points[7 + i] = points[i] * 0.8f;
 
