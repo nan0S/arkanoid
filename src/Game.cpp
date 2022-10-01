@@ -14,6 +14,7 @@ void Game::start()
         fprintf(stderr, "Failed to open GLFW window.\n");
         getchar();
         glfwTerminate();
+        return;
     }
 
     glewExperimental = true;
@@ -45,7 +46,12 @@ void Game::initGame()
        exit(EXIT_FAILURE);
     }
 
-    glm::vec2 points[] = {};
+   glm::vec2 points[] = {
+      { -1.0f, 1.0f },
+      { -1.0f, -1.0f },
+      { 1.0f, 1.0f },
+      { 1.0f, -1.0f }
+   };
 
     glGenBuffers(1, &bg_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, bg_buffer);

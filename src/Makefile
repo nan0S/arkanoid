@@ -7,6 +7,9 @@ CFLAGS = -std=c++17 -Wall -Wextra
 OBJS = $(TARGET).o
 LIBS = -lGLEW -lGL -lglfw
 
+arkanoid2: main.o Shader.o
+	g++ -o arkanoid2 $^ $(LIBS)
+
 all: $(TARGET)
 
 install: $(TARGET) clean

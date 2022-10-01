@@ -13,6 +13,7 @@ bool Window::create(int w, int h, std::string title)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     width = w; height = h;
+    window = glfwCreateWindow(width, height, "Arkanoid", 0, 0);
     if (window == NULL)
         return false;
     glfwMakeContextCurrent(window);

@@ -27,14 +27,14 @@ void Ball::draw()
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (void*)0);
     glEnableVertexAttribArray(0);
 
-    glUniform2f(0, translate.x + 0.01f, translate.y - 0.01f);
-    glUniform3f(1, Color::BLACK.r, Color::BLACK.g, Color::BLACK.b);
+    glUniform2f(1, translate.x + 0.01f, translate.y - 0.01f);
+    glUniform3f(0, Color::BLACK.r, Color::BLACK.g, Color::BLACK.b);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
-    glUniform2f(0, translate.x, translate.y);
-    glUniform3f(1, Color::BALL.r, Color::BALL.g, Color::BALL.b);
+    glUniform2f(1, translate.x, translate.y);
+    glUniform3f(0, Color::BALL.r, Color::BALL.g, Color::BALL.b);
     glDrawArrays(GL_TRIANGLES, 0, 3);
-    
+
     glDisableVertexAttribArray(0);
 
     // drawVelocity();
@@ -49,8 +49,8 @@ void Ball::drawVelocity()
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (void*)0);
     glEnableVertexAttribArray(0);
 
-    glUniform2f(0, translate.x, translate.y);
-    glUniform3f(1, Color::YELLOW.r, Color::YELLOW.g, Color::YELLOW.b);
+    glUniform2f(1, translate.x, translate.y);
+    glUniform3f(0, Color::YELLOW.r, Color::YELLOW.g, Color::YELLOW.b);
 
     glDrawArrays(GL_LINES, 0, 2);
 
@@ -68,12 +68,12 @@ void Ball::update()
 
 Triangle Ball::getTriangle()
 {
-    return triangle + translate;  
+    return triangle + translate;
 }
 
 void Ball::bounce(Line l, bool along_normal)
 {
-    glm::vec2 w = l.p1 - l.p2; 
+    glm::vec2 w = l.p1 - l.p2;
     glm::vec2 d = velocity - Math::cross(velocity, w) / Math::cross(w, w) * w;
     if (along_normal)
         velocity = Math::normalized(-d);
@@ -86,4 +86,3 @@ void Ball::shake()
     velocity.x += Random::random(-0.1f, 0.1f);
     velocity = Math::normalized(velocity);
 }
-

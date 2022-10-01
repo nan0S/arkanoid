@@ -29,15 +29,15 @@ void Player::draw()
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
     glEnableVertexAttribArray(0);
 
-    glUniform2f(0, translate.x + 0.02f, translate.y - 0.015f);
-    glUniform3f(1, Color::BLACK.r, Color::BLACK.g, Color::BLACK.b);
+    glUniform2f(1, translate.x + 0.02f, translate.y - 0.015f);
+    glUniform3f(0, Color::BLACK.r, Color::BLACK.g, Color::BLACK.b);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 7);
 
-    glUniform2f(0, translate.x, translate.y);
-    glUniform3f(1, Color::PLAYER2.r, Color::PLAYER2.g, Color::PLAYER2.b);
+    glUniform2f(1, translate.x, translate.y);
+    glUniform3f(0, Color::PLAYER2.r, Color::PLAYER2.g, Color::PLAYER2.b);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 7);
 
-    glUniform3f(1, Color::PLAYER1.r, Color::PLAYER1.g, Color::PLAYER1.b);
+    glUniform3f(0, Color::PLAYER1.r, Color::PLAYER1.g, Color::PLAYER1.b);
     glDrawArrays(GL_TRIANGLE_FAN, 7, 7);
 
     glDisableVertexAttribArray(0);
