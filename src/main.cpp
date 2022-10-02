@@ -39,7 +39,7 @@ Line create_line(vec2 a, vec2 b)
 
 struct Triangle
 {
-   vec2 p[3];
+   vec2 p[3]; // anti-clockwise order
 };
 
 Triangle create_equaliteral_triangle(vec2 center, float side_length, bool inverted)
@@ -49,18 +49,59 @@ Triangle create_equaliteral_triangle(vec2 center, float side_length, bool invert
    float height = side_length * sqrtf(3.f) / 6.f;
    if (inverted)
    {
-       t.p[0] = vec2(center.x - 0.5f*side_length, center.y + height);
-       t.p[1] = vec2(center.x + 0.5f*side_length, center.y + height);
+       t.p[0] = vec2(center.x + 0.5f*side_length, center.y + height);
+       t.p[1] = vec2(center.x - 0.5f*side_length, center.y + height);
        t.p[2] = vec2(center.x, center.y - 2.f*height);
    }
    else
    {
        t.p[0] = vec2(center.x - 0.5f*side_length, center.y - height);
-       t.p[1] = vec2(center.x, center.y + 2.f*height);
-       t.p[2] = vec2(center.x + 0.5f*side_length, center.y - height);
+       t.p[1] = vec2(center.x + 0.5f*side_length, center.y - height);
+       t.p[2] = vec2(center.x, center.y + 2.f*height);
    }
 
    return t;
+}
+
+float cross(vec2 u, vec2 v)
+{
+   return u.x*v.y - u.y*v.x;
+}
+
+bool binary_orientation(vec2 p, Line l)
+{
+   return cross(p-l.p[1], l.p[0]-l.p[1]) > 0;
+}
+
+bool is_intersection(Line l1, Line l2)
+{
+   return binary_orientation(l1.p[0], l2) != binary_orientation(l1.p[1], l2)
+       && binary_orientation(l2.p[0], l1) != binary_orientation(l2.p[1], l1);
+}
+
+// TODO(hobrzut): Change return value/name function convention (multiple lines).
+bool is_intersection(Triangle t1, Triangle t2, Line *intersection_line)
+{
+   Line t1_lines[] = {
+      create_line(t1.p[0], t1.p[1]),
+      create_line(t1.p[1], t1.p[2]),
+      create_line(t1.p[2], t1.p[0])
+   };
+   Line t2_lines[] = {
+      create_line(t2.p[0], t2.p[1]),
+      create_line(t2.p[1], t2.p[2]),
+      create_line(t2.p[2], t2.p[0])
+   };
+
+   for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j)
+         if (is_intersection(t1_lines[i], t2_lines[j]))
+         {
+            *intersection_line = t1_lines[i];
+            return true;
+         }
+
+   return false;
 }
 
 struct Player
@@ -153,6 +194,8 @@ int main2()
       return EXIT_FAILURE;
    }
 
+   GLint standard_shader_translate_uniform = glGetUniformLocation(standard_shader, "translate");
+   GLint standard_shader_color_uniform = glGetUniformLocation(standard_shader, "color");
    GLint bg_shader_time_uniform = glGetUniformLocation(bg_shader, "time");
 
    GLuint vao;
@@ -195,8 +238,10 @@ int main2()
    Ball ball = {};
    ball.speed = 1.3f;
    float velocity_angle = Random::sample(0.25f, 0.75f) * M_PI;
+   // TODO(hobrzut): Remove that.
+   velocity_angle = M_PI/2.f;
    ball.velocity = vec2(std::cos(velocity_angle), std::sin(velocity_angle));
-   ball.translate = vec2(0.f, 0.8f);
+   ball.translate = vec2(0.f, -0.8f);
 
    Triangle ball_triangle = create_equaliteral_triangle(vec2(0.f), 0.04f, false);
    glGenBuffers(1, &ball.vbo);
@@ -233,10 +278,8 @@ int main2()
    glBindBuffer(GL_ARRAY_BUFFER, board_vbo);
    glBufferData(GL_ARRAY_BUFFER, sizeof(Triangle) * num_board_triangles, board_triangles, GL_STATIC_DRAW);
 
-   GLint standard_shader_translate_uniform = glGetUniformLocation(standard_shader, "translate");
-   GLint standard_shader_color_uniform = glGetUniformLocation(standard_shader, "color");
-
    bool paused = false;
+   bool started = false;
    int p_last_state = GLFW_RELEASE;
    float bg_time = 0;
    float delta_time = 0.f;
@@ -259,22 +302,47 @@ int main2()
          paused = !paused;
       p_last_state = p_state;
 
+      if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+         started = true;
+
       if (!paused)
       {
          /* Simulate. */
          bg_time += delta_time;
 
-         if (glfwGetKey(window, GLFW_KEY_A))
-            player.translate.x -= delta_time * player.speed;
-         if (glfwGetKey(window, GLFW_KEY_D))
-            player.translate.x += delta_time * player.speed;
-         player.translate.x = std::max(-0.9f, std::min(0.9f, player.translate.x));
+         if (started)
+         {
+            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+               player.translate.x -= delta_time * player.speed;
+            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+               player.translate.x += delta_time * player.speed;
+            player.translate.x = std::max(-0.9f, std::min(0.9f, player.translate.x));
 
-         ball.translate += delta_time * ball.speed * ball.velocity;
-         if (ball.translate.x >= 1.f || ball.translate.x <= -1.f)
-            ball.velocity.x = -ball.velocity.x;
-         if (ball.translate.y >= 1.f || ball.translate.y <= -1.f)
-            ball.velocity.y = -ball.velocity.y;
+            ball.translate += delta_time * ball.speed * ball.velocity;
+            if (ball.translate.x >= 1.f || ball.translate.x <= -1.f)
+               ball.velocity.x = -ball.velocity.x;
+            if (ball.translate.y >= 1.f || ball.translate.y <= -1.f)
+               ball.velocity.y = -ball.velocity.y;
+
+            Triangle ball_translated_triangle = ball_triangle;
+            for (int i = 0; i < 3; ++i)
+               ball_translated_triangle.p[i] += ball.translate;
+
+            for (int i = 0; i < num_board_triangles; ++i)
+            {
+               Line intersection_line;
+               if (is_intersection(ball_translated_triangle, board_triangles[i], &intersection_line))
+               {
+                  vec2 w = intersection_line.p[0] - intersection_line.p[1];
+                  vec2 d = ball.velocity - glm::dot(ball.velocity, w) / glm::dot(w, w) * w;
+                  ball.velocity -= 2.f * d;
+
+                  std::swap(board_triangles[i], board_triangles[--num_board_triangles]);
+
+                  break;
+               }
+            }
+         }
 
          glClear(GL_COLOR_BUFFER_BIT);
 
