@@ -12,22 +12,51 @@
 using vec2 = glm::vec2;
 using vec3 = glm::vec3;
 
-int main2();
-
-int main()
-{
-   return main2();
-   // Game game;
-   // game.start();
-//
-   // return 0;
-}
-
 // TODO(hobrzut): Move to another file.
 struct Line
 {
    vec2 p[2];
 };
+
+struct Triangle
+{
+   vec2 p[3]; // anti-clockwise order
+};
+
+struct Background
+{
+   GLuint vbo;
+};
+
+struct Player
+{
+   float speed;
+   vec2 translate;
+   GLuint vbo;
+   vec2 body_points[7];
+};
+
+struct Ball
+{
+   float speed;
+   vec2 velocity;
+   vec2 translate;
+   GLuint vbo;
+   Triangle body;
+};
+
+struct Board
+{
+   int rows, cols;
+   int num_triangles;
+   Triangle *triangles;
+   GLuint vbo;
+};
+
+float cross(vec2 u, vec2 v)
+{
+   return u.x*v.y - u.y*v.x;
+}
 
 Line create_line(vec2 a, vec2 b)
 {
@@ -37,10 +66,10 @@ Line create_line(vec2 a, vec2 b)
    return line;
 }
 
-struct Triangle
+bool binary_orientation(vec2 p, Line l)
 {
-   vec2 p[3]; // anti-clockwise order
-};
+   return cross(p-l.p[1], l.p[0]-l.p[1]) > 0;
+}
 
 Triangle create_equaliteral_triangle(vec2 center, float side_length, bool inverted)
 {
@@ -63,61 +92,46 @@ Triangle create_equaliteral_triangle(vec2 center, float side_length, bool invert
    return t;
 }
 
-float cross(vec2 u, vec2 v)
-{
-   return u.x*v.y - u.y*v.x;
-}
-
-bool binary_orientation(vec2 p, Line l)
-{
-   return cross(p-l.p[1], l.p[0]-l.p[1]) > 0;
-}
-
 bool is_intersection(Line l1, Line l2)
 {
    return binary_orientation(l1.p[0], l2) != binary_orientation(l1.p[1], l2)
        && binary_orientation(l2.p[0], l1) != binary_orientation(l2.p[1], l1);
 }
 
+bool is_intersection(Line l, Triangle t)
+{
+   Line lines[3] = {
+      create_line(t.p[0], t.p[1]),
+      create_line(t.p[1], t.p[2]),
+      create_line(t.p[2], t.p[0])
+   };
+
+   for (int i = 0; i < 3; ++i)
+      if (is_intersection(l, lines[i]))
+         return true;
+
+   return false;
+}
+
 // TODO(hobrzut): Change return value/name function convention (multiple lines).
 bool is_intersection(Triangle t1, Triangle t2, Line *intersection_line)
 {
-   Line t1_lines[] = {
-      create_line(t1.p[0], t1.p[1]),
-      create_line(t1.p[1], t1.p[2]),
-      create_line(t1.p[2], t1.p[0])
-   };
-   Line t2_lines[] = {
+   Line lines[] = {
       create_line(t2.p[0], t2.p[1]),
       create_line(t2.p[1], t2.p[2]),
       create_line(t2.p[2], t2.p[0])
    };
 
    for (int i = 0; i < 3; ++i)
-      for (int j = 0; j < 3; ++j)
-         if (is_intersection(t1_lines[i], t2_lines[j]))
-         {
-            *intersection_line = t1_lines[i];
-            return true;
-         }
+      if (is_intersection(lines[i], t1))
+      {
+         *intersection_line = lines[i];
+         return true;
+      }
 
    return false;
 }
 
-struct Player
-{
-   float speed;
-   vec2 translate;
-   GLuint vbo;
-};
-
-struct Ball
-{
-   float speed;
-   vec2 velocity;
-   vec2 translate;
-   GLuint vbo;
-};
 
 namespace Random
 {
@@ -140,7 +154,7 @@ void window_resize_handler(GLFWwindow *, int width, int height)
    glViewport(0, 0, width, height);
 }
 
-int main2()
+int main()
 {
    if (!glfwInit())
    {
@@ -154,10 +168,13 @@ int main2()
    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-   int width = 1080;
-   int height = 1080;
-   GLFWwindow *window = glfwCreateWindow(width, height, "Arkanoid", 0, 0);
-   glViewport(0, 0, width, height);
+   GLFWwindow *window;
+   {
+      int width = 1080;
+      int height = 1080;
+      window = glfwCreateWindow(width, height, "Arkanoid", 0, 0);
+      glViewport(0, 0, width, height);
+   }
 
    if (!window)
    {
@@ -202,81 +219,86 @@ int main2()
    glGenVertexArrays(1, &vao);
    glBindVertexArray(vao);
 
-   // TODO(hobrzut): Subscope.
-   vec2 screen_corners[] = {
-      { -1.0f, 1.0f },
-      { -1.0f, -1.0f },
-      { 1.0f, 1.0f },
-      { 1.0f, -1.0f }
-   };
+   Background bg = {};
+   {
+      vec2 screen_corners[] = {
+         { -1.0f, 1.0f },
+         { -1.0f, -1.0f },
+         { 1.0f, 1.0f },
+         { 1.0f, -1.0f }
+      };
 
-   // TODO(hobrzut): Batch all triangles.
-   GLuint bg_vbo;
-   glGenBuffers(1, &bg_vbo);
-   glBindBuffer(GL_ARRAY_BUFFER, bg_vbo);
-   glBufferData(GL_ARRAY_BUFFER, sizeof(screen_corners), screen_corners, GL_STATIC_DRAW);
+      // TODO(hobrzut): Batch all triangles.
+      glGenBuffers(1, &bg.vbo);
+      glBindBuffer(GL_ARRAY_BUFFER, bg.vbo);
+      glBufferData(GL_ARRAY_BUFFER, sizeof(screen_corners), screen_corners, GL_STATIC_DRAW);
+   }
 
    Player player = {};
-   player.speed = 1.1f;
-   player.translate = vec2(0.f, -0.94f);
+   {
+      player.speed = 1.1f;
+      player.translate = vec2(0.f, -0.94f);
+      player.body_points[0] = vec2(0.0f, 0.0f);
+      player.body_points[1] = vec2(-0.1f, 0.00f);
+      player.body_points[2] = vec2(-0.06f, 0.04f);
+      player.body_points[3] = vec2(-0.03f, 0.05f);
+      player.body_points[4] = vec2(0.03f, 0.05f);
+      player.body_points[5] = vec2(0.06f, 0.04f);
+      player.body_points[6] = vec2(0.1f, 0.0f);
 
-   vec2 player_points[] = {
-      { 0.0f, 0.0f },
-      { -0.1f, 0.00f },
-      { -0.06f, 0.04f },
-      { -0.03f, 0.05f },
-      { 0.03f, 0.05f },
-      { 0.06f, 0.04f },
-      { 0.1f, 0.0f }
-   };
-
-   // TODO(hobrzut): Move [glGenBuffers] into one call.
-   glGenBuffers(1, &player.vbo);
-   glBindBuffer(GL_ARRAY_BUFFER, player.vbo);
-   glBufferData(GL_ARRAY_BUFFER, sizeof(player_points), player_points, GL_STATIC_DRAW);
+      // TODO(hobrzut): Move [glGenBuffers] into one call.
+      glGenBuffers(1, &player.vbo);
+      glBindBuffer(GL_ARRAY_BUFFER, player.vbo);
+      glBufferData(GL_ARRAY_BUFFER, sizeof(player.body_points), player.body_points, GL_STATIC_DRAW);
+   }
 
    Ball ball = {};
-   ball.speed = 1.3f;
-   float velocity_angle = Random::sample(0.25f, 0.75f) * M_PI;
-   // TODO(hobrzut): Remove that.
-   velocity_angle = M_PI/2.f;
-   ball.velocity = vec2(std::cos(velocity_angle), std::sin(velocity_angle));
-   ball.translate = vec2(0.f, -0.8f);
+   {
+      ball.speed = 1.3f;
+      float velocity_angle = Random::sample(0.25f, 0.75f) * M_PI;
+      // TODO(hobrzut): Remove that.
+      velocity_angle = M_PI/2.f;
+      ball.velocity = vec2(std::cos(velocity_angle), std::sin(velocity_angle));
+      ball.translate = vec2(0.f, -0.8f);
+      ball.body = create_equaliteral_triangle(vec2(0.f), 0.04f, false);
 
-   Triangle ball_triangle = create_equaliteral_triangle(vec2(0.f), 0.04f, false);
-   glGenBuffers(1, &ball.vbo);
-   glBindBuffer(GL_ARRAY_BUFFER, ball.vbo);
-   glBufferData(GL_ARRAY_BUFFER, sizeof(ball_triangle.p), ball_triangle.p, GL_STATIC_DRAW);
+      glGenBuffers(1, &ball.vbo);
+      glBindBuffer(GL_ARRAY_BUFFER, ball.vbo);
+      glBufferData(GL_ARRAY_BUFFER, sizeof(ball.body.p), ball.body.p, GL_STATIC_DRAW);
+   }
 
-   int board_rows = 3;
-   int board_cols = 4;
-   int num_board_triangles = 2*board_rows*board_cols;
-   Triangle *board_triangles = (Triangle *)malloc(num_board_triangles * sizeof(Triangle));
-   float triangle_side_length = 0.11f;
-   float triangle_height = sqrtf(3.f) / 6.f * triangle_side_length;
-   vec2 global_offset(-(board_cols + 0.5f) * triangle_side_length * 0.5f, 0.65f);
+   Board board = {};
+   {
+      board.rows = 3;
+      board.cols = 4;
+      board.num_triangles = 2*board.rows*board.cols;
+      board.triangles = (Triangle *)malloc(board.num_triangles * sizeof(Triangle));
 
-   for (int i = 0; i < board_rows; ++i)
-      for (int j = 0; j < board_cols; ++j)
-      {
-         int idx = 2 * (i*board_cols + j);
-         vec2 shared_offset(j*triangle_side_length, -i*triangle_height*3.f - 3.f*triangle_height*(i-1));
+      float triangle_side_length = 0.11f;
+      float triangle_height = sqrtf(3.f) / 6.f * triangle_side_length;
+      vec2 global_offset(-(board.cols + 0.5f) * triangle_side_length * 0.5f, 0.65f);
 
-         float side_length = triangle_side_length * 0.8f;
+      for (int i = 0; i < board.rows; ++i)
+         for (int j = 0; j < board.cols; ++j)
+         {
+            int idx = 2 * (i*board.cols + j);
+            vec2 shared_offset(j*triangle_side_length, -i*triangle_height*3.f - 3.f*triangle_height*(i-1));
 
-         vec2 local_offset1(triangle_side_length*0.5f, triangle_height);
-         vec2 triangle1_center = global_offset + shared_offset + local_offset1;
-         board_triangles[idx] = create_equaliteral_triangle(triangle1_center, side_length, false);
+            float side_length = triangle_side_length * 0.8f;
 
-         vec2 local_offset2(triangle_side_length, 2.f*triangle_height);
-         vec2 triangle2_center = global_offset + shared_offset + local_offset2;
-         board_triangles[idx+1] = create_equaliteral_triangle(triangle2_center, side_length, true);
-      }
+            vec2 local_offset1(triangle_side_length*0.5f, triangle_height);
+            vec2 triangle1_center = global_offset + shared_offset + local_offset1;
+            board.triangles[idx] = create_equaliteral_triangle(triangle1_center, side_length, false);
 
-   GLuint board_vbo;
-   glGenBuffers(1, &board_vbo);
-   glBindBuffer(GL_ARRAY_BUFFER, board_vbo);
-   glBufferData(GL_ARRAY_BUFFER, sizeof(Triangle) * num_board_triangles, board_triangles, GL_STATIC_DRAW);
+            vec2 local_offset2(triangle_side_length, 2.f*triangle_height);
+            vec2 triangle2_center = global_offset + shared_offset + local_offset2;
+            board.triangles[idx+1] = create_equaliteral_triangle(triangle2_center, side_length, true);
+         }
+
+      glGenBuffers(1, &board.vbo);
+      glBindBuffer(GL_ARRAY_BUFFER, board.vbo);
+      glBufferData(GL_ARRAY_BUFFER, sizeof(Triangle) * board.num_triangles, board.triangles, GL_STATIC_DRAW);
+   }
 
    bool paused = false;
    bool started = false;
@@ -302,11 +324,11 @@ int main2()
          paused = !paused;
       p_last_state = p_state;
 
-      if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-         started = true;
-
       if (!paused)
       {
+         if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+            started = true;
+
          /* Simulate. */
          bg_time += delta_time;
 
@@ -324,20 +346,38 @@ int main2()
             if (ball.translate.y >= 1.f || ball.translate.y <= -1.f)
                ball.velocity.y = -ball.velocity.y;
 
-            Triangle ball_translated_triangle = ball_triangle;
+            Triangle ball_translated_triangle = ball.body;
             for (int i = 0; i < 3; ++i)
                ball_translated_triangle.p[i] += ball.translate;
 
-            for (int i = 0; i < num_board_triangles; ++i)
+            for (int i = 0; i < board.num_triangles; ++i)
             {
                Line intersection_line;
-               if (is_intersection(ball_translated_triangle, board_triangles[i], &intersection_line))
+               if (is_intersection(ball_translated_triangle, board.triangles[i], &intersection_line))
                {
                   vec2 w = intersection_line.p[0] - intersection_line.p[1];
                   vec2 d = ball.velocity - glm::dot(ball.velocity, w) / glm::dot(w, w) * w;
                   ball.velocity -= 2.f * d;
 
-                  std::swap(board_triangles[i], board_triangles[--num_board_triangles]);
+                  std::swap(board.triangles[i], board.triangles[--board.num_triangles]);
+                  glBindBuffer(GL_ARRAY_BUFFER, board.vbo);
+                  glBufferData(GL_ARRAY_BUFFER, sizeof(Triangle) * board.num_triangles, board.triangles, GL_STATIC_DRAW);
+
+                  break;
+               }
+            }
+
+            for (int i = 0; i < 5; ++i)
+            {
+               vec2 p1 = player.body_points[i+1] + player.translate;
+               vec2 p2 = player.body_points[i+2] + player.translate;
+               Line line = create_line(p1, p2);
+
+               if (is_intersection(line, ball_translated_triangle))
+               {
+                  vec2 w = line.p[0] - line.p[1];
+                  vec2 d = ball.velocity - glm::dot(ball.velocity, w) / glm::dot(w, w) * w;
+                  ball.velocity -= 2.f * d;
 
                   break;
                }
@@ -348,7 +388,7 @@ int main2()
 
          /* Draw background. */
          glUseProgram(bg_shader);
-         glBindBuffer(GL_ARRAY_BUFFER, bg_vbo);
+         glBindBuffer(GL_ARRAY_BUFFER, bg.vbo);
          glEnableVertexAttribArray(0);
          glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
@@ -394,17 +434,17 @@ int main2()
          glDisableVertexAttribArray(0);
 
          /* Draw board. */
-         glBindBuffer(GL_ARRAY_BUFFER, board_vbo);
+         glBindBuffer(GL_ARRAY_BUFFER, board.vbo);
          glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
          glEnableVertexAttribArray(0);
 
          glUniform2f(standard_shader_translate_uniform, 0.01f, -0.01f);
          glUniform3f(standard_shader_color_uniform, 0.f, 0.f, 0.f);
-         glDrawArrays(GL_TRIANGLES, 0, 3*num_board_triangles);
+         glDrawArrays(GL_TRIANGLES, 0, 3*board.num_triangles);
 
          glUniform2f(standard_shader_translate_uniform, 0.0f, 0.0f);
          glUniform3f(standard_shader_color_uniform,  244.f/255, 192.f/255, 149.f/255);
-         glDrawArrays(GL_TRIANGLES, 0, 3*num_board_triangles);
+         glDrawArrays(GL_TRIANGLES, 0, 3*board.num_triangles);
 
          glDisableVertexAttribArray(0);
 
