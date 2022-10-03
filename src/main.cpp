@@ -154,6 +154,43 @@ void window_resize_handler(GLFWwindow *, int width, int height)
    glViewport(0, 0, width, height);
 }
 
+void reset_game(Player *player, Ball *ball, Board *board)
+{
+   player->translate = vec2(0.f, -0.94f);
+
+   float velocity_angle = Random::sample(0.25f, 0.75f) * M_PI;
+   ball->velocity = vec2(std::cos(velocity_angle), std::sin(velocity_angle));
+   ball->translate = vec2(0.f, -0.85f);
+
+   board->num_triangles = 2*board->rows*board->cols;
+   if (!board->triangles)
+      board->triangles = (Triangle *)malloc(board->num_triangles * sizeof(Triangle));
+
+   float triangle_side_length = 0.11f;
+   float triangle_height = sqrtf(3.f) / 6.f * triangle_side_length;
+   vec2 global_offset(-(board->cols + 0.5f) * triangle_side_length * 0.5f, 0.65f);
+
+   for (int i = 0; i < board->rows; ++i)
+      for (int j = 0; j < board->cols; ++j)
+      {
+         int idx = 2 * (i*board->cols + j);
+         vec2 shared_offset(j*triangle_side_length, -i*triangle_height*3.f - 3.f*triangle_height*(i-1));
+
+         float side_length = triangle_side_length * 0.8f;
+
+         vec2 local_offset1(triangle_side_length*0.5f, triangle_height);
+         vec2 triangle1_center = global_offset + shared_offset + local_offset1;
+         board->triangles[idx] = create_equaliteral_triangle(triangle1_center, side_length, false);
+
+         vec2 local_offset2(triangle_side_length, 2.f*triangle_height);
+         vec2 triangle2_center = global_offset + shared_offset + local_offset2;
+         board->triangles[idx+1] = create_equaliteral_triangle(triangle2_center, side_length, true);
+      }
+
+   glBindBuffer(GL_ARRAY_BUFFER, board->vbo);
+   glBufferData(GL_ARRAY_BUFFER, sizeof(Triangle) * board->num_triangles, board->triangles, GL_STATIC_DRAW);
+}
+
 int main()
 {
    if (!glfwInit())
@@ -237,7 +274,6 @@ int main()
    Player player = {};
    {
       player.speed = 1.1f;
-      player.translate = vec2(0.f, -0.94f);
       player.body_points[0] = vec2(0.0f, 0.0f);
       player.body_points[1] = vec2(-0.1f, 0.00f);
       player.body_points[2] = vec2(-0.06f, 0.04f);
@@ -255,11 +291,6 @@ int main()
    Ball ball = {};
    {
       ball.speed = 1.3f;
-      float velocity_angle = Random::sample(0.25f, 0.75f) * M_PI;
-      // TODO(hobrzut): Remove that.
-      velocity_angle = M_PI/2.f;
-      ball.velocity = vec2(std::cos(velocity_angle), std::sin(velocity_angle));
-      ball.translate = vec2(0.f, -0.8f);
       ball.body = create_equaliteral_triangle(vec2(0.f), 0.04f, false);
 
       glGenBuffers(1, &ball.vbo);
@@ -271,34 +302,10 @@ int main()
    {
       board.rows = 3;
       board.cols = 4;
-      board.num_triangles = 2*board.rows*board.cols;
-      board.triangles = (Triangle *)malloc(board.num_triangles * sizeof(Triangle));
-
-      float triangle_side_length = 0.11f;
-      float triangle_height = sqrtf(3.f) / 6.f * triangle_side_length;
-      vec2 global_offset(-(board.cols + 0.5f) * triangle_side_length * 0.5f, 0.65f);
-
-      for (int i = 0; i < board.rows; ++i)
-         for (int j = 0; j < board.cols; ++j)
-         {
-            int idx = 2 * (i*board.cols + j);
-            vec2 shared_offset(j*triangle_side_length, -i*triangle_height*3.f - 3.f*triangle_height*(i-1));
-
-            float side_length = triangle_side_length * 0.8f;
-
-            vec2 local_offset1(triangle_side_length*0.5f, triangle_height);
-            vec2 triangle1_center = global_offset + shared_offset + local_offset1;
-            board.triangles[idx] = create_equaliteral_triangle(triangle1_center, side_length, false);
-
-            vec2 local_offset2(triangle_side_length, 2.f*triangle_height);
-            vec2 triangle2_center = global_offset + shared_offset + local_offset2;
-            board.triangles[idx+1] = create_equaliteral_triangle(triangle2_center, side_length, true);
-         }
-
       glGenBuffers(1, &board.vbo);
-      glBindBuffer(GL_ARRAY_BUFFER, board.vbo);
-      glBufferData(GL_ARRAY_BUFFER, sizeof(Triangle) * board.num_triangles, board.triangles, GL_STATIC_DRAW);
    }
+
+   reset_game(&player, &ball, &board);
 
    bool paused = false;
    bool started = false;
@@ -324,27 +331,34 @@ int main()
          paused = !paused;
       p_last_state = p_state;
 
+      bool game_over = false;
+      bool game_restart = false;
+
       if (!paused)
       {
          if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
             started = true;
+         if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
+            game_restart = true;
 
          /* Simulate. */
          bg_time += delta_time;
 
+         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            player.translate.x -= delta_time * player.speed;
+         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            player.translate.x += delta_time * player.speed;
+         player.translate.x = std::max(-0.9f, std::min(0.9f, player.translate.x));
+
          if (started)
          {
-            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-               player.translate.x -= delta_time * player.speed;
-            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-               player.translate.x += delta_time * player.speed;
-            player.translate.x = std::max(-0.9f, std::min(0.9f, player.translate.x));
-
             ball.translate += delta_time * ball.speed * ball.velocity;
             if (ball.translate.x >= 1.f || ball.translate.x <= -1.f)
                ball.velocity.x = -ball.velocity.x;
-            if (ball.translate.y >= 1.f || ball.translate.y <= -1.f)
+            if (ball.translate.y >= 1.f)
                ball.velocity.y = -ball.velocity.y;
+            if (ball.translate.y < -1.f)
+               game_over = true;
 
             Triangle ball_translated_triangle = ball.body;
             for (int i = 0; i < 3; ++i)
@@ -383,6 +397,9 @@ int main()
                }
             }
          }
+         else
+            ball.translate.x = player.translate.x;
+
 
          glClear(GL_COLOR_BUFFER_BIT);
 
@@ -449,6 +466,12 @@ int main()
          glDisableVertexAttribArray(0);
 
          glfwSwapBuffers(window);
+
+         if (game_over || game_restart)
+         {
+            reset_game(&player, &ball, &board);
+            started = false;
+         }
 
          delta_time = glfwGetTime() - begin_time;
       }
