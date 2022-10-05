@@ -21,33 +21,43 @@ struct Triangle
    vec2 p[3]; // anti-clockwise order
 };
 
-struct Background
+// TODO(hoburzt): Make SOA out of it.
+struct Vertex
 {
-   GLuint vbo;
+   vec2 position;
+   vec2 uv;
+};
+
+struct Rectangle
+   vec2 position;
+   float width;
+   float height;
 };
 
 struct Player
 {
+   Rectangle body;
    float speed;
-   vec2 translate;
+
    GLuint vbo;
-   vec2 body_points[7];
 };
 
 struct Ball
 {
-   float speed;
-   vec2 velocity;
    vec2 translate;
+   vec2 velocity;
+   float speed;
+
+   float radius;
+
    GLuint vbo;
-   Triangle body;
 };
 
 struct Board
 {
-   int rows, cols;
-   int num_triangles;
-   Triangle *triangles;
+   int num_blocks;
+   vec2 *block_positions;
+
    GLuint vbo;
 };
 
@@ -62,6 +72,19 @@ Line create_line(vec2 a, vec2 b)
    line.p[0] = a;
    line.p[1] = b;
    return line;
+}
+
+void create_rectangle_vertices(Vertex vertices[4], float width, float height)
+{
+   vertices[0].position = vec2(-width*0.5f, -height*0.5f);
+   vertices[1].position = vertices[0].position + vec2(width, 0.f);
+   vertices[2].position = vertices[0].position + vec2(0.f, height);
+   vertices[3].position = vertices[0].position + vec2(width, height);
+
+   vertices[0].uv = vec2(-1.0f, -1.0f);
+   vertices[1].uv = vec2(1.0f, -1.0f);
+   vertices[2].uv = vec2(-1.0f, 1.0f);
+   vertices[3].uv = vec2(1.0f, 1.0f);
 }
 
 bool binary_orientation(vec2 p, Line l)
@@ -170,10 +193,48 @@ void reset_game(Player *player, Ball *ball, Board *board)
    ball->velocity = vec2(std::cos(velocity_angle), std::sin(velocity_angle));
    ball->translate = vec2(0.f, -0.85f);
 
-   board->num_triangles = 2 * board->rows * board->cols;
-   if (board->triangles)
-      free(board->triangles);
-   board->triangles = (Triangle *)malloc(board->num_triangles * sizeof(Triangle));
+   int n_rows = 8;
+   int n_cols = 9;
+   const char *board =
+      "...XXX...\n"
+      "...XXX...\n"
+      "...XXX...\n"
+      ".........\n"
+      ".........\n"
+      ".........\n"
+      ".........\n"
+      ".........\n";
+
+   board->num_blocks = n_rows * n_cols;
+   if (board->triangles) free(board->block_positions);
+   board->block_positions = (vec2 *)malloc(board->num_blocks * sizeof(vec2));
+   vec2 vertices = (vec2 *)malloc(board->num_blocks * 6 * sizeof(vec2));
+
+   float screen_width = 2.0f;
+   float screen_height = 2.0f;
+   float border = 0.1f; // TODO(hobrzut): Customize.
+   float padding = 0.02f; // TODO(hobrzut): Customize.
+   float player_area = 0.2f; // TODO(hobrzut): Customize.
+
+   float game_area_width = screen_width - 2*border - 2*padding;
+
+   float between_blocks_padding = 0.01f; // TODO(hobrzut): Customize.
+
+   float block_width = (game_area_width - (n_cols-1) * between_blocks_padding) / n_cols;
+   float block_height = 0.05f; // TODO(hobrzut): Customize.
+
+   float pos_y = screen_height - border - padding - block_height;
+   for (int row = 0; row < n_rows; ++row)
+   {
+      float pos_x = border + padding;
+      for (int col = 0; col < n_cols; ++col)
+      {
+
+         pos_x += between_blocks_padding + block_width;
+      }
+
+      pos_y += between_blocks_padding + block_height;
+   }
 
    float triangle_side_length = 0.11f;
    float triangle_height = sqrtf(3.f) / 6.f * triangle_side_length;
@@ -198,6 +259,8 @@ void reset_game(Player *player, Ball *ball, Board *board)
 
    glBindBuffer(GL_ARRAY_BUFFER, board->vbo);
    glBufferData(GL_ARRAY_BUFFER, sizeof(Triangle) * board->num_triangles, board->triangles, GL_STATIC_DRAW);
+
+   free(vertices);
 }
 
 int main()
@@ -219,7 +282,7 @@ int main()
       int width = 1080;
       int height = 1080;
       window = glfwCreateWindow(width, height, "Arkanoid", 0, 0);
-      glViewport(0, 0, width, height);
+      window_resize_handler(window, width, height);
    }
 
    if (!window)
@@ -235,23 +298,13 @@ int main()
 
    if (glewInit() != GLEW_OK)
    {
-      fprintf(stderr, "Failed to initialize GLEW\n");
-      return EXIT_FAILURE;
-   }
-
-   GLuint standard_shader = Shader::load(
-         "../shader/standardVertexShader.glsl",
-         "../shader/standardFragmentShader.glsl");
-
-   if (!standard_shader)
-   {
-      fprintf(stderr, "Failed to load standard shader.\n");
+      fprintf(stderr, "Failed to initialize GLEW.\n");
       return EXIT_FAILURE;
    }
 
    GLuint bg_shader = Shader::load(
-         "../shader/bgVertexShader.glsl",
-         "../shader/bgFragmentShader.glsl");
+         "../shader/background_vertex.glsl",
+         "../shader/background_fragment.glsl");
 
    if (!bg_shader)
    {
@@ -259,64 +312,94 @@ int main()
       return EXIT_FAILURE;
    }
 
-   GLint standard_shader_translate_uniform = glGetUniformLocation(standard_shader, "translate");
-   GLint standard_shader_color_uniform = glGetUniformLocation(standard_shader, "color");
+   GLuint player_shader = Shader::load(
+         "../shader/player_vertex.glsl",
+         "../shader/player_fragment.glsl");
+
+   if (!player_shader)
+   {
+      fprintf(stderr, "Failed to load player shader.\n");
+      return EXIT_FAILURE;
+   }
+
+   GLuint ball_shader = Shader::load(
+         "../shader/ball_vertex.glsl",
+         "../shader/ball_fragment.glsl");
+
+   if (!ball_shader)
+   {
+      fprintf(stderr, "Failed to load ball shader.\n");
+      return EXIT_FAILURE;
+   }
+
+   GLuint block_shader = Shader::load(
+         "../shader/block_vertex.glsl",
+         "../shader/block_fragment.glsl");
+
+   if (!block_shader)
+   {
+      fprintf(stderr, "Failed to load block shader.\n");
+      return EXIT_FAILURE;
+   }
+
    GLint bg_shader_time_uniform = glGetUniformLocation(bg_shader, "time");
+   GLint player_shader_translate_uniform = glGetUniformLocation(player_shader, "translate");
+   GLint ball_shader_translate_uniform = glGetUniformLocation(ball_shader, "translate");
+   GLint block_shader_translate_uniform = glGetUniformLocation(block_shader, "translate");
 
    GLuint vao;
    glGenVertexArrays(1, &vao);
    glBindVertexArray(vao);
 
-   Background bg = {};
+   GLuint bg_vbo;
    {
       vec2 screen_corners[] = {
-         { -1.0f, 1.0f },
+         { -1.0f,  1.0f },
          { -1.0f, -1.0f },
-         { 1.0f, 1.0f },
-         { 1.0f, -1.0f }
+         {  1.0f,  1.0f },
+         {  1.0f, -1.0f }
       };
 
-      // TODO(hobrzut): Batch all triangles.
-      glGenBuffers(1, &bg.vbo);
-      glBindBuffer(GL_ARRAY_BUFFER, bg.vbo);
+      glGenBuffers(1, &bg_vbo);
+      glBindBuffer(GL_ARRAY_BUFFER, bg_vbo);
       glBufferData(GL_ARRAY_BUFFER, sizeof(screen_corners), screen_corners, GL_STATIC_DRAW);
    }
 
    Player player = {};
    {
+      float width = 0.1f;
+      float height = 0.01f;
+
+      player.body.width = width;
+      player.body.height = height;
       player.speed = 1.1f;
 
-      player.body_points[0] = vec2(0.0f, 0.0f);
-      player.body_points[1] = vec2(-0.1f, 0.00f);
-      player.body_points[2] = vec2(-0.06f, 0.04f);
-      player.body_points[3] = vec2(-0.03f, 0.05f);
-      player.body_points[4] = vec2(0.03f, 0.05f);
-      player.body_points[5] = vec2(0.06f, 0.04f);
-      player.body_points[6] = vec2(0.1f, 0.0f);
+      Vertex vertices[4];
+      create_rectangle_vertices(vertices, width, height);
 
-      // TODO(hobrzut): Move [glGenBuffers] into one call.
       glGenBuffers(1, &player.vbo);
       glBindBuffer(GL_ARRAY_BUFFER, player.vbo);
-      glBufferData(GL_ARRAY_BUFFER, sizeof(player.body_points), player.body_points, GL_STATIC_DRAW);
+      glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+      // TODO(hobrzut): Add enable/pointer here?
    }
 
    Ball ball = {};
    {
+      float radius = 0.05f;
+
       ball.speed = 1.3f;
-      ball.body = create_equaliteral_triangle(vec2(0.f), 0.04f, false);
+      ball.radius = radius;
+
+      Vertex vertices[4];
+      create_rectangle_vertices(vertices, radius, radius);
 
       glGenBuffers(1, &ball.vbo);
       glBindBuffer(GL_ARRAY_BUFFER, ball.vbo);
-      glBufferData(GL_ARRAY_BUFFER, sizeof(ball.body.p), ball.body.p, GL_STATIC_DRAW);
+      glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
    }
 
    Board board = {};
-   {
-      board.rows = 1;
-      board.cols = 1;
-
-      glGenBuffers(1, &board.vbo);
-   }
+   glGenBuffers(1, &board.vbo);
 
    reset_game(&player, &ball, &board);
 
@@ -432,7 +515,7 @@ int main()
 
          /* Draw background. */
          glUseProgram(bg_shader);
-         glBindBuffer(GL_ARRAY_BUFFER, bg.vbo);
+         glBindBuffer(GL_ARRAY_BUFFER, bg_vbo);
          glEnableVertexAttribArray(0);
          glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
