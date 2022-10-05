@@ -1,5 +1,3 @@
-// #include "Game.hpp"
-
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -132,6 +130,12 @@ bool is_intersection(Triangle t1, Triangle t2, Line *intersection_line)
    return false;
 }
 
+vec2 reflect(vec2 v, Line line)
+{
+   vec2 w = line.p[0] - line.p[1];
+   vec2 d = v - glm::dot(v, w) / glm::dot(w, w) * w;
+   return v - 2.f * d;
+}
 
 namespace Random
 {
@@ -151,7 +155,11 @@ namespace Random
 
 void window_resize_handler(GLFWwindow *, int width, int height)
 {
-   glViewport(0, 0, width, height);
+   int size = std::min(width, height);
+   int width_offset = (width - size) / 2;
+   int height_offset = (height - size) / 2;
+
+   glViewport(width_offset, height_offset, size, size);
 }
 
 void reset_game(Player *player, Ball *ball, Board *board)
@@ -162,9 +170,10 @@ void reset_game(Player *player, Ball *ball, Board *board)
    ball->velocity = vec2(std::cos(velocity_angle), std::sin(velocity_angle));
    ball->translate = vec2(0.f, -0.85f);
 
-   board->num_triangles = 2*board->rows*board->cols;
-   if (!board->triangles)
-      board->triangles = (Triangle *)malloc(board->num_triangles * sizeof(Triangle));
+   board->num_triangles = 2 * board->rows * board->cols;
+   if (board->triangles)
+      free(board->triangles);
+   board->triangles = (Triangle *)malloc(board->num_triangles * sizeof(Triangle));
 
    float triangle_side_length = 0.11f;
    float triangle_height = sqrtf(3.f) / 6.f * triangle_side_length;
@@ -220,28 +229,30 @@ int main()
    }
 
    glfwMakeContextCurrent(window);
-   // TODO(hobrzut): Check what that does.
-   // glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
+   glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
    glClearColor(7.f/255, 30.f/255, 34.f/255, 1.f);
    glfwSetFramebufferSizeCallback(window, window_resize_handler);
 
-   // TODO(hobrzut): Check what that does.
-   glewExperimental = 1;
    if (glewInit() != GLEW_OK)
    {
       fprintf(stderr, "Failed to initialize GLEW\n");
       return EXIT_FAILURE;
    }
 
-   GLuint standard_shader = Shader::load("../shader/standardVertexShader.glsl",
-                                         "../shader/standardFragmentShader.glsl");
+   GLuint standard_shader = Shader::load(
+         "../shader/standardVertexShader.glsl",
+         "../shader/standardFragmentShader.glsl");
+
    if (!standard_shader)
    {
       fprintf(stderr, "Failed to load standard shader.\n");
       return EXIT_FAILURE;
    }
-   GLuint bg_shader = Shader::load("../shader/bgVertexShader.glsl",
-                                   "../shader/bgFragmentShader.glsl");
+
+   GLuint bg_shader = Shader::load(
+         "../shader/bgVertexShader.glsl",
+         "../shader/bgFragmentShader.glsl");
+
    if (!bg_shader)
    {
       fprintf(stderr, "Failed to load background shader.\n");
@@ -274,6 +285,7 @@ int main()
    Player player = {};
    {
       player.speed = 1.1f;
+
       player.body_points[0] = vec2(0.0f, 0.0f);
       player.body_points[1] = vec2(-0.1f, 0.00f);
       player.body_points[2] = vec2(-0.06f, 0.04f);
@@ -300,8 +312,9 @@ int main()
 
    Board board = {};
    {
-      board.rows = 3;
-      board.cols = 4;
+      board.rows = 1;
+      board.cols = 1;
+
       glGenBuffers(1, &board.vbo);
    }
 
@@ -332,14 +345,15 @@ int main()
       p_last_state = p_state;
 
       bool game_over = false;
-      bool game_restart = false;
+      bool restart_requested = false;
+      bool level_completed = false;
 
       if (!paused)
       {
          if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
             started = true;
          if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
-            game_restart = true;
+            restart_requested = true;
 
          /* Simulate. */
          bg_time += delta_time;
@@ -352,30 +366,41 @@ int main()
 
          if (started)
          {
-            ball.translate += delta_time * ball.speed * ball.velocity;
-            if (ball.translate.x >= 1.f || ball.translate.x <= -1.f)
+            vec2 ball_new_translate = ball.translate + delta_time * ball.speed * ball.velocity;
+            bool ball_disturbed = false;
+
+            if (ball_new_translate.x >= 1.f || ball_new_translate.x <= -1.f)
+            {
                ball.velocity.x = -ball.velocity.x;
-            if (ball.translate.y >= 1.f)
+               ball_disturbed = true;
+            }
+            if (ball_new_translate.y >= 1.f)
+            {
                ball.velocity.y = -ball.velocity.y;
+               ball_disturbed = true;
+            }
             if (ball.translate.y < -1.f)
                game_over = true;
 
             Triangle ball_translated_triangle = ball.body;
             for (int i = 0; i < 3; ++i)
-               ball_translated_triangle.p[i] += ball.translate;
+               ball_translated_triangle.p[i] += ball_new_translate;
 
             for (int i = 0; i < board.num_triangles; ++i)
             {
                Line intersection_line;
                if (is_intersection(ball_translated_triangle, board.triangles[i], &intersection_line))
                {
-                  vec2 w = intersection_line.p[0] - intersection_line.p[1];
-                  vec2 d = ball.velocity - glm::dot(ball.velocity, w) / glm::dot(w, w) * w;
-                  ball.velocity -= 2.f * d;
+                  ball.velocity = reflect(ball.velocity, intersection_line);
+                  ball_disturbed = true;
 
                   std::swap(board.triangles[i], board.triangles[--board.num_triangles]);
+
                   glBindBuffer(GL_ARRAY_BUFFER, board.vbo);
                   glBufferData(GL_ARRAY_BUFFER, sizeof(Triangle) * board.num_triangles, board.triangles, GL_STATIC_DRAW);
+
+                  if (board.num_triangles == 0)
+                     level_completed = true;
 
                   break;
                }
@@ -389,13 +414,15 @@ int main()
 
                if (is_intersection(line, ball_translated_triangle))
                {
-                  vec2 w = line.p[0] - line.p[1];
-                  vec2 d = ball.velocity - glm::dot(ball.velocity, w) / glm::dot(w, w) * w;
-                  ball.velocity -= 2.f * d;
+                  ball.velocity = reflect(ball.velocity, line);
+                  ball_disturbed = true;
 
                   break;
                }
             }
+
+            if (!ball_disturbed)
+               ball.translate = ball_new_translate;
          }
          else
             ball.translate.x = player.translate.x;
@@ -467,8 +494,14 @@ int main()
 
          glfwSwapBuffers(window);
 
-         if (game_over || game_restart)
+         if (game_over || restart_requested || level_completed)
          {
+            if (level_completed)
+            {
+               ++board.rows;
+               ++board.cols;
+            }
+
             reset_game(&player, &ball, &board);
             started = false;
          }

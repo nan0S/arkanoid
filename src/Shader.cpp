@@ -14,6 +14,21 @@ using namespace std;
 
 #include "Shader.hpp"
 
+// TODO(hobrzut): Move it to a better place.
+template<typename Lambda>
+struct Scope_guard
+{
+   Scope_guard(Lambda &&lambda) : lambda(std::forward<Lambda>(lambda)) {}
+   ~Scope_guard() { lambda(); }
+
+   Lambda lambda;
+};
+
+#define DO_CONCAT(a, b) a##b
+#define CONCAT(a, b) DO_CONCAT(a, b)
+#define UNIQUENAME( prefix ) CONCAT(prefix, __COUNTER__)
+#define defer Scope_guard UNIQUENAME(sg) = [&]()
+
 namespace Shader
 {
 
@@ -44,7 +59,7 @@ read_file(FILE *file)
    fseek(file, 0, SEEK_END);
    long length = ftell(file);
    char *contents = (char *)malloc(length+1);
-   fseek(file, 0, SEEK_SET);
+   rewind(file);
    fread(contents, 1, length, file);
    contents[length] = 0;
 
@@ -61,6 +76,11 @@ compile(const char *vertex_code, const char *fragment_code)
    GLuint vertex_id = compile(vertex_code, GL_VERTEX_SHADER);
    GLuint fragment_id = compile(fragment_code, GL_FRAGMENT_SHADER);
 
+   defer {
+      glDeleteShader(vertex_id);
+      glDeleteShader(fragment_id);
+   };
+
    glAttachShader(program_id, vertex_id);
    glAttachShader(program_id, fragment_id);
    glLinkProgram(program_id);
@@ -70,15 +90,11 @@ compile(const char *vertex_code, const char *fragment_code)
    if (!link_status)
    {
       glDeleteProgram(program_id);
-      glDeleteShader(vertex_id);
-      glDeleteShader(fragment_id);
       return 0;
    }
 
    glDetachShader(program_id, vertex_id);
    glDetachShader(program_id, fragment_id);
-   glDeleteShader(vertex_id);
-   glDeleteShader(fragment_id);
 
    return program_id;
 }
@@ -87,31 +103,24 @@ GLuint
 load(const char *vertex_shader_path, const char *fragment_shader_path)
 {
    FILE *vertex_file = fopen(vertex_shader_path, "r");
-   if (vertex_file)
-   {
-      char *vertex_code = read_file(vertex_file);
-      fclose(vertex_file);
-
-      FILE *fragment_file = fopen(fragment_shader_path, "r");
-      if (fragment_file)
-      {
-         char *fragment_code = read_file(fragment_file);
-
-         GLuint shader = compile(vertex_code, fragment_code);
-
-         free(vertex_code);
-         free(fragment_code);
-
-         return shader;
-      }
-      else
-      {
-         free(vertex_code);
-         return 0;
-      }
-   }
-   else
+   if (!vertex_file)
       return 0;
+
+   char *vertex_code = read_file(vertex_file);
+   defer { free(vertex_code); };
+
+   fclose(vertex_file);
+
+   FILE *fragment_file = fopen(fragment_shader_path, "r");
+   if (!fragment_file)
+      return 0;
+
+   char *fragment_code = read_file(fragment_file);
+   defer { free(fragment_code); };
+
+   fclose(fragment_file);
+
+   return compile(vertex_code, fragment_code);
 }
 
 } // namespace Shader
