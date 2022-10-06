@@ -29,6 +29,7 @@ struct Vertex
 };
 
 struct Rectangle
+{
    vec2 position;
    float width;
    float height;
@@ -56,7 +57,10 @@ struct Ball
 struct Board
 {
    int num_blocks;
-   vec2 *block_positions;
+   vec2 *block_positions; // left-bottom corner
+
+   float block_width;
+   float block_height;
 
    GLuint vbo;
 };
@@ -187,15 +191,16 @@ void window_resize_handler(GLFWwindow *, int width, int height)
 
 void reset_game(Player *player, Ball *ball, Board *board)
 {
-   player->translate = vec2(0.f, -0.94f);
+   player->body.position = vec2(0.f, -0.94f);
 
    float velocity_angle = Random::sample(0.25f, 0.75f) * M_PI;
    ball->velocity = vec2(std::cos(velocity_angle), std::sin(velocity_angle));
    ball->translate = vec2(0.f, -0.85f);
 
+   // TODO(hobrzut): Load from file instead.
    int n_rows = 8;
    int n_cols = 9;
-   const char *board =
+   const char *board_text =
       "...XXX...\n"
       "...XXX...\n"
       "...XXX...\n"
@@ -206,9 +211,9 @@ void reset_game(Player *player, Ball *ball, Board *board)
       ".........\n";
 
    board->num_blocks = n_rows * n_cols;
-   if (board->triangles) free(board->block_positions);
+   if (board->block_positions) free(board->block_positions);
    board->block_positions = (vec2 *)malloc(board->num_blocks * sizeof(vec2));
-   vec2 vertices = (vec2 *)malloc(board->num_blocks * 6 * sizeof(vec2));
+   vec2 *vertices = (vec2 *)malloc(board->num_blocks * 6 * sizeof(vec2));
 
    float screen_width = 2.0f;
    float screen_height = 2.0f;
@@ -223,12 +228,30 @@ void reset_game(Player *player, Ball *ball, Board *board)
    float block_width = (game_area_width - (n_cols-1) * between_blocks_padding) / n_cols;
    float block_height = 0.05f; // TODO(hobrzut): Customize.
 
+   board->block_width = block_width;
+   board->block_height = block_height;
+
    float pos_y = screen_height - border - padding - block_height;
-   for (int row = 0; row < n_rows; ++row)
+   for (int row = 0, vert_idx = 0, block_idx = 0; row < n_rows; ++row)
    {
       float pos_x = border + padding;
-      for (int col = 0; col < n_cols; ++col)
+      for (int col = 0; col < n_cols; ++col, vert_idx += 6, ++block_idx)
       {
+         vec2 p1 = vec2(pos_x, pos_y);
+         vec2 p2 = p1 + vec2(block_width, 0.f);
+         vec2 p3 = p1 + vec2(0.f, block_height);
+         vec2 p4 = p1 + vec2(block_width, block_height);
+
+         vertices[vert_idx + 0] = p1;
+         vertices[vert_idx + 1] = p1;
+         vertices[vert_idx + 2] = p3;
+         vertices[vert_idx + 3] = p2;
+         vertices[vert_idx + 4] = p4;
+         vertices[vert_idx + 5] = p3;
+
+         // TODO(hobrzut): Change to left-bottom corner.
+         vec2 position = p1 + vec2(block_width*0.5f, block_height*0.5f);
+         board->block_positions[block_idx] = p1;
 
          pos_x += between_blocks_padding + block_width;
       }
@@ -236,29 +259,9 @@ void reset_game(Player *player, Ball *ball, Board *board)
       pos_y += between_blocks_padding + block_height;
    }
 
-   float triangle_side_length = 0.11f;
-   float triangle_height = sqrtf(3.f) / 6.f * triangle_side_length;
-   vec2 global_offset(-(board->cols + 0.5f) * triangle_side_length * 0.5f, 0.65f);
-
-   for (int i = 0; i < board->rows; ++i)
-      for (int j = 0; j < board->cols; ++j)
-      {
-         int idx = 2 * (i*board->cols + j);
-         vec2 shared_offset(j*triangle_side_length, -i*triangle_height*3.f - 3.f*triangle_height*(i-1));
-
-         float side_length = triangle_side_length * 0.8f;
-
-         vec2 local_offset1(triangle_side_length*0.5f, triangle_height);
-         vec2 triangle1_center = global_offset + shared_offset + local_offset1;
-         board->triangles[idx] = create_equaliteral_triangle(triangle1_center, side_length, false);
-
-         vec2 local_offset2(triangle_side_length, 2.f*triangle_height);
-         vec2 triangle2_center = global_offset + shared_offset + local_offset2;
-         board->triangles[idx+1] = create_equaliteral_triangle(triangle2_center, side_length, true);
-      }
 
    glBindBuffer(GL_ARRAY_BUFFER, board->vbo);
-   glBufferData(GL_ARRAY_BUFFER, sizeof(Triangle) * board->num_triangles, board->triangles, GL_STATIC_DRAW);
+   glBufferData(GL_ARRAY_BUFFER, sizeof(vec2) * 6 * board->num_blocks, board->block_positions, GL_STATIC_DRAW);
 
    free(vertices);
 }
@@ -344,6 +347,7 @@ int main()
 
    GLint bg_shader_time_uniform = glGetUniformLocation(bg_shader, "time");
    GLint player_shader_translate_uniform = glGetUniformLocation(player_shader, "translate");
+   GLint player_shader_color_uniform = glGetUniformLocation(player_shader, "color");
    GLint ball_shader_translate_uniform = glGetUniformLocation(ball_shader, "translate");
    GLint block_shader_translate_uniform = glGetUniformLocation(block_shader, "translate");
 
@@ -441,11 +445,12 @@ int main()
          /* Simulate. */
          bg_time += delta_time;
 
+         float player_move_x = 0.0f;
          if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-            player.translate.x -= delta_time * player.speed;
+            player_move_x -= delta_time * player.speed;
          if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-            player.translate.x += delta_time * player.speed;
-         player.translate.x = std::max(-0.9f, std::min(0.9f, player.translate.x));
+            player_move_x += delta_time * player.speed;
+         player.body.position.x = std::max(-0.9f, std::min(0.9f, player.body.position.x + player_move_x));
 
          if (started)
          {
@@ -465,50 +470,60 @@ int main()
             if (ball.translate.y < -1.f)
                game_over = true;
 
-            Triangle ball_translated_triangle = ball.body;
-            for (int i = 0; i < 3; ++i)
-               ball_translated_triangle.p[i] += ball_new_translate;
-
-            for (int i = 0; i < board.num_triangles; ++i)
+            for (int i = 0; i < board.num_blocks; ++i)
             {
-               Line intersection_line;
-               if (is_intersection(ball_translated_triangle, board.triangles[i], &intersection_line))
+               vec2 block_position = board.block_positions[i];
+               float block_width = board.block_width;
+               float block_height = board.block_height;
+
+               if (ball_new_translate.x >= block_position.x - ball.radius &&
+                   ball_new_translate.x <= block_position.x + block_width + ball.radius &&
+                   ball_new_translate.y >= block_position.y - ball.radius &&
+                   ball_new_translate.y <= block_position.y + block_height + ball.radius)
                {
-                  ball.velocity = reflect(ball.velocity, intersection_line);
-                  ball_disturbed = true;
-
-                  std::swap(board.triangles[i], board.triangles[--board.num_triangles]);
-
-                  glBindBuffer(GL_ARRAY_BUFFER, board.vbo);
-                  glBufferData(GL_ARRAY_BUFFER, sizeof(Triangle) * board.num_triangles, board.triangles, GL_STATIC_DRAW);
-
-                  if (board.num_triangles == 0)
-                     level_completed = true;
-
-                  break;
                }
             }
 
-            for (int i = 0; i < 5; ++i)
-            {
-               vec2 p1 = player.body_points[i+1] + player.translate;
-               vec2 p2 = player.body_points[i+2] + player.translate;
-               Line line = create_line(p1, p2);
-
-               if (is_intersection(line, ball_translated_triangle))
-               {
-                  ball.velocity = reflect(ball.velocity, line);
-                  ball_disturbed = true;
-
-                  break;
-               }
-            }
+            // for (int i = 0; i < board.num_triangles; ++i)
+            // {
+               // Line intersection_line;
+               // if (is_intersection(ball_translated_triangle, board.triangles[i], &intersection_line))
+               // {
+                  // ball.velocity = reflect(ball.velocity, intersection_line);
+                  // ball_disturbed = true;
+//
+                  // std::swap(board.triangles[i], board.triangles[--board.num_triangles]);
+//
+                  // glBindBuffer(GL_ARRAY_BUFFER, board.vbo);
+                  // glBufferData(GL_ARRAY_BUFFER, sizeof(Triangle) * board.num_triangles, board.triangles, GL_STATIC_DRAW);
+//
+                  // if (board.num_triangles == 0)
+                     // level_completed = true;
+//
+                  // break;
+               // }
+            // }
+//
+            // for (int i = 0; i < 5; ++i)
+            // {
+               // vec2 p1 = player.body_points[i+1] + player.translate;
+               // vec2 p2 = player.body_points[i+2] + player.translate;
+               // Line line = create_line(p1, p2);
+//
+               // if (is_intersection(line, ball_translated_triangle))
+               // {
+                  // ball.velocity = reflect(ball.velocity, line);
+                  // ball_disturbed = true;
+//
+                  // break;
+               // }
+            // }
 
             if (!ball_disturbed)
                ball.translate = ball_new_translate;
          }
          else
-            ball.translate.x = player.translate.x;
+            ball.translate.x = player.body.position.x;
 
 
          glClear(GL_COLOR_BUFFER_BIT);
@@ -523,68 +538,65 @@ int main()
          glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
          glDisableVertexAttribArray(0);
-
-         glUseProgram(standard_shader);
+         glUseProgram(0);
 
          /* Draw player. */
-         glBindBuffer(GL_ARRAY_BUFFER, player.vbo);
-         glEnableVertexAttribArray(0);
-         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
-
-         glUniform2f(standard_shader_translate_uniform, player.translate.x + 0.02f, player.translate.y - 0.015f);
-         glUniform3f(standard_shader_color_uniform, 0.f, 0.f, 0.f);
-         glDrawArrays(GL_TRIANGLE_FAN, 0, 7);
-
-         glUniform2f(standard_shader_translate_uniform, player.translate.x, player.translate.y);
-         glUniform3f(standard_shader_color_uniform,  80.f/255, 120.f/255, 111.f/255);
-         glDrawArrays(GL_TRIANGLE_FAN, 0, 7);
-
-         glUniform3f(standard_shader_color_uniform,  24.f/255, 100.f/255, 97.f/255);
-         glDrawArrays(GL_TRIANGLE_FAN, 7, 7);
-
-         glDisableVertexAttribArray(0);
+         // glUseProgram(player_shader);
+         // glBindBuffer(GL_ARRAY_BUFFER, player.vbo);
+         // glEnableVertexAttribArray(0);
+         // glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+         // glEnableVertexAttribArray(1);
+         // glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const GLvoid *)offsetof(Vertex, uv));
+//
+         // glUniform2f(player_shader_translate_uniform, player.body.position.x + 0.02f, player.body.position.y - 0.015f);
+         // glUniform3f(player_shader_color_uniform, 0.f, 0.f, 0.f);
+         // glDrawArrays(GL_TRIANGLE_FAN, 0, 7);
+//
+         // glUniform2f(player_shader_translate_uniform, player.body.position.x, player.body.position.y);
+         // glUniform3f(player_shader_color_uniform,  80.f/255, 120.f/255, 111.f/255);
+         // glDrawArrays(GL_TRIANGLE_FAN, 0, 7);
+//
+         // glUniform3f(player_shader_color_uniform,  24.f/255, 100.f/255, 97.f/255);
+         // glDrawArrays(GL_TRIANGLE_FAN, 7, 7);
+//
+         // glDisableVertexAttribArray(0);
+         // glDisableVertexAttribArray(1);
 
          /* Draw ball. */
-         glBindBuffer(GL_ARRAY_BUFFER, ball.vbo);
-         glEnableVertexAttribArray(0);
-         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
-
-         glUniform2f(standard_shader_translate_uniform, ball.translate.x + 0.01f, ball.translate.y - 0.01f);
-         glUniform3f(standard_shader_color_uniform, 0.f, 0.f, 0.f);
-         glDrawArrays(GL_TRIANGLES, 0, 3);
-
-         glUniform2f(standard_shader_translate_uniform, ball.translate.x, ball.translate.y);
-         glUniform3f(standard_shader_color_uniform,  244.f/255, 192.f/255, 149.f/255);
-         glDrawArrays(GL_TRIANGLES, 0, 3);
-
-         // TODO(hobrzut): Maybe call enable/disable only once.
-         glDisableVertexAttribArray(0);
-
-         /* Draw board. */
-         glBindBuffer(GL_ARRAY_BUFFER, board.vbo);
-         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
-         glEnableVertexAttribArray(0);
-
-         glUniform2f(standard_shader_translate_uniform, 0.01f, -0.01f);
-         glUniform3f(standard_shader_color_uniform, 0.f, 0.f, 0.f);
-         glDrawArrays(GL_TRIANGLES, 0, 3*board.num_triangles);
-
-         glUniform2f(standard_shader_translate_uniform, 0.0f, 0.0f);
-         glUniform3f(standard_shader_color_uniform,  244.f/255, 192.f/255, 149.f/255);
-         glDrawArrays(GL_TRIANGLES, 0, 3*board.num_triangles);
-
-         glDisableVertexAttribArray(0);
-
+         // glBindBuffer(GL_ARRAY_BUFFER, ball.vbo);
+         // glEnableVertexAttribArray(0);
+         // glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+//
+         // glUniform2f(standard_shader_translate_uniform, ball.translate.x + 0.01f, ball.translate.y - 0.01f);
+         // glUniform3f(standard_shader_color_uniform, 0.f, 0.f, 0.f);
+         // glDrawArrays(GL_TRIANGLES, 0, 3);
+//
+         // glUniform2f(standard_shader_translate_uniform, ball.translate.x, ball.translate.y);
+         // glUniform3f(standard_shader_color_uniform,  244.f/255, 192.f/255, 149.f/255);
+         // glDrawArrays(GL_TRIANGLES, 0, 3);
+//
+         // // TODO(hobrzut): Maybe call enable/disable only once.
+         // glDisableVertexAttribArray(0);
+//
+         // [> Draw board. <]
+         // glBindBuffer(GL_ARRAY_BUFFER, board.vbo);
+         // glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+         // glEnableVertexAttribArray(0);
+//
+         // glUniform2f(standard_shader_translate_uniform, 0.01f, -0.01f);
+         // glUniform3f(standard_shader_color_uniform, 0.f, 0.f, 0.f);
+         // glDrawArrays(GL_TRIANGLES, 0, 3*board.num_triangles);
+//
+         // glUniform2f(standard_shader_translate_uniform, 0.0f, 0.0f);
+         // glUniform3f(standard_shader_color_uniform,  244.f/255, 192.f/255, 149.f/255);
+         // glDrawArrays(GL_TRIANGLES, 0, 3*board.num_triangles);
+//
+         // glDisableVertexAttribArray(0);
+//
          glfwSwapBuffers(window);
 
          if (game_over || restart_requested || level_completed)
          {
-            if (level_completed)
-            {
-               ++board.rows;
-               ++board.cols;
-            }
-
             reset_game(&player, &ball, &board);
             started = false;
          }
