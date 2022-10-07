@@ -1,15 +1,13 @@
 #version 330 core
 
-in vec2 v_UV;
+in vec2 v_uv;
 
-out vec3 f_Color;
-
-uniform vec3 color;
+out vec4 f_color;
 
 void main()
 {
-   if (dot(uv, uv) <= 1.0f)
-      f_Color = color;
+   if (dot(v_uv, v_uv) <= 1.0f)
+      f_color = vec4(244.0f/255, 192.0f/255, 149.0f/255, 1.0f);
    else
-      f_Color.a = 0.0f;
+      f_color = vec4(0.0f);
 }

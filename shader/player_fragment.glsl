@@ -1,12 +1,10 @@
 #version 330 core
 
-in vec2 v_UV;
+in vec2 v_uv;
 
-out vec3 f_Color;
-
-uniform vec3 color;
+out vec4 f_color;
 
 void main()
 {
-   f_Color = color;
+   f_color = vec4(80.f/255, 120.f/255, 111.f/255, 1.0f);
 }

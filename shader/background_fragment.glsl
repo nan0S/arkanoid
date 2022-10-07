@@ -1,10 +1,13 @@
 #version 330 core
 
-out vec3 f_Color;
+in float v_normalized_position_x;
+
+out vec4 f_color;
 
 uniform float time;
 
-float constrain(float value,
+float
+constrain(float value,
    float value_min,
    float value_max,
    float target_min,
@@ -24,25 +27,19 @@ void main()
    if (x+y > 0)
    {
       if (x-y > 0)
-         f_Color = vec3(2.5f/255, 15.0f/255, 31.0f/255);
+         f_color = vec4(2.5f/255, 15.0f/255, 31.0f/255, 1.0f);
       else
-         f_Color = vec3(18.5f/255, 15.0f/255, 31.0f/255);
+         f_color = vec4(18.5f/255, 15.0f/255, 31.0f/255, 1.0f);
    }
    else
    {
       if (x-y > 0)
-         f_Color = vec3(34.5f/255, 15.0f/255, 31.0f/255);
+         f_color = vec4(34.5f/255, 15.0f/255, 31.0f/255, 1.0f);
       else
-         f_Color = vec3(50.5f/255, 15.0f/255, 31.0f/255);
+         f_color = vec4(50.5f/255, 15.0f/255, 31.0f/255, 1.0f);
    }
 
-   // float k = abs(cos(time)) * (1.0f - abs(gl_FragCoord.x));
-   float k = abs(cos(time)) * (1 - abs(10*gl_FragCoord.x));
-   if (k < 0)
-      k = 0;
-      if (k > 1)
-         k = 1;
+   float k = abs(cos(time)) * (1.0f - abs(v_normalized_position_x));
    k = constrain(k, 0.0f, 1.0f, 0.6f, 1.0f);
-   f_Color *= 2.0f * k;
-   f_Color = vec3(gl_FragCoord.x, gl_FragCoord.x, gl_FragCoord.x/10);
+   f_color.rgb *= 2.0f * k;
 }
