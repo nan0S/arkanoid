@@ -28,20 +28,6 @@ glfw_error_callback(int code, const char *desc)
    fprintf(stderr, "GLFW error [%d]: %s\n", code, desc);
 }
 
-void
-create_rectangle_with_uv(v2 data[8], float half_width, float half_height)
-{
-   data[1] = {  half_width, -half_height };
-   data[0] = { -half_width, -half_height };
-   data[2] = { -half_width,  half_height };
-   data[3] = {  half_width,  half_height };
-
-   data[4] = { -1.0f, -1.0f };
-   data[5] = {  1.0f, -1.0f };
-   data[6] = { -1.0f,  1.0f };
-   data[7] = {  1.0f,  1.0f };
-}
-
 inline float
 random_unilateral()
 {
@@ -157,24 +143,27 @@ main()
 
    GL_CALL(GLint bg_shader_time_uniform = glGetUniformLocation(bg_shader, "time"));
    GL_CALL(GLint player_shader_translate_uniform = glGetUniformLocation(player_shader, "translate"));
+   GL_CALL(GLint player_shader_scale_uniform = glGetUniformLocation(player_shader, "scale"));
    GL_CALL(GLint ball_shader_translate_uniform = glGetUniformLocation(ball_shader, "translate"));
+   GL_CALL(GLint ball_shader_radius_uniform = glGetUniformLocation(ball_shader, "radius"));
+
+   // TODO(hobrzut): Maybe get rid of square and use instancing.
+   v2 square[] = {
+      { -1.0f, -1.0f },
+      { -1.0f,  1.0f },
+      {  1.0f, -1.0f },
+      {  1.0f,  1.0f },
+   };
 
    GLuint bg_vao;
    {
       GL_CALL(glGenVertexArrays(1, &bg_vao));
       GL_CALL(glBindVertexArray(bg_vao));
 
-      v2 screen_corners[] = {
-         { -1.0f, -1.0f },
-         { -1.0f,  1.0f },
-         {  1.0f, -1.0f },
-         {  1.0f,  1.0f },
-      };
-
       GLuint bg_vbo;
       GL_CALL(glGenBuffers(1, &bg_vbo));
       GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, bg_vbo));
-      GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(screen_corners), screen_corners, GL_STATIC_DRAW));
+      GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(square), square, GL_STATIC_DRAW));
 
       GL_CALL(glEnableVertexAttribArray(0));
       GL_CALL(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0));
@@ -185,8 +174,8 @@ main()
    float player_speed = 2.0f;
    float player_body_width = 0.2f;
    float player_body_height = 0.035f;
-   float player_half_body_width = 0.5f * player_body_width;
-   float player_half_body_height = 0.5f * player_body_height;
+   float player_body_half_width = 0.5f * player_body_width;
+   float player_body_half_height = 0.5f * player_body_height;
    const int PLAYER_SEGMENTS = 6;
    float player_segment_length = player_body_width / PLAYER_SEGMENTS;
    float player_segment_bounce_angles[PLAYER_SEGMENTS] = { 140, 115, 100, 80, 65, 40 };
@@ -194,18 +183,13 @@ main()
       glGenVertexArrays(1, &player_vao);
       glBindVertexArray(player_vao);
 
-      v2 body_data[8];
-      create_rectangle_with_uv(body_data, player_half_body_width, player_half_body_height);
-
       GLuint player_vbo;
       GL_CALL(glGenBuffers(1, &player_vbo));
       GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, player_vbo));
-      GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(body_data), body_data, GL_STATIC_DRAW));
+      GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(square), square, GL_STATIC_DRAW));
 
       GL_CALL(glEnableVertexAttribArray(0));
       GL_CALL(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0));
-      GL_CALL(glEnableVertexAttribArray(1));
-      GL_CALL(glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (const void *)(4*sizeof(v2))));
 
       for (int i = 0; i < PLAYER_SEGMENTS; ++i)
          // TODO(hobrzut): Change M_PI to pi32.
@@ -223,18 +207,46 @@ main()
       GL_CALL(glGenVertexArrays(1, &ball_vao));
       GL_CALL(glBindVertexArray(ball_vao));
 
-      v2 body_data[8];
-      create_rectangle_with_uv(body_data, ball_half_radius, ball_half_radius);
+      GLuint vbo;
+      GL_CALL(glGenBuffers(1, &vbo));
+      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, vbo));
+      GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(square), square, GL_STATIC_DRAW));
+
+      GL_CALL(glEnableVertexAttribArray(0));
+      GL_CALL(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0));
+   }
+
+   GLuint board_vao;
+   {
+      int num_rows = 8;
+      int num_cols = 9;
+      const char *board_text =
+         "...XXX..."
+         "...XXX..."
+         "...XXX..."
+         "........."
+         "........."
+         "........."
+         "........."
+         ".........";
+
+      int num_blocks = num_rows * num_cols;
+      vec2 *block_positions = (vec2 *)malloc(num_blocks * sizeof(vec2));
+
+      for (int row = 0; row < num_rows; ++row)
+      {
+         for (int col = 0; col < num_cols; ++col)
+         {
+         }
+      }
+
+      GL_CALL(glGenVertexArrays(1, &board_vao));
+      GL_CALL(glBindVertexArray(board_vao));
 
       GLuint vbo;
       GL_CALL(glGenBuffers(1, &vbo));
       GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, vbo));
-      GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(body_data), body_data, GL_STATIC_DRAW));
-
-      GL_CALL(glEnableVertexAttribArray(0));
-      GL_CALL(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0));
-      GL_CALL(glEnableVertexAttribArray(1));
-      GL_CALL(glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (const void *)(4*sizeof(v2))));
+      GL_CALL(glBufferData(GL_ARRAY_BUFFER, ));
    }
 
    float bg_time = 0.0f;
@@ -248,7 +260,7 @@ main()
         &ball_translate,
         &ball_velocity,
         ball_half_radius,
-        player_half_body_height]()
+        player_body_half_height]()
    {
       started = false;
 
@@ -256,9 +268,9 @@ main()
 
       float eps = 0.001f;
       ball_translate.x = player_translate.x;
-      ball_translate.y = player_translate.y + player_half_body_height + ball_half_radius + eps;
+      ball_translate.y = player_translate.y + player_body_half_height + ball_half_radius + eps;
 
-      float velocity_angle = random_between(M_PI/4, 3*M_PI/4);
+      float velocity_angle = random_between(0.25f*M_PI, 0.75f*M_PI);
       ball_velocity = v2_from_angle(velocity_angle);
    };
 
@@ -306,8 +318,8 @@ main()
             player_velocity_x += player_speed;
          player_translate.x += delta_time * player_velocity_x;
 
-         float max_left = -1.0f + player_half_body_width;
-         float max_right = 1.0f - player_half_body_width;
+         float max_left = -1.0f + player_body_half_width;
+         float max_right = 1.0f - player_body_half_width;
          if (player_translate.x > max_right)
             player_translate.x = max_right;
          if (player_translate.x < max_left)
@@ -328,16 +340,16 @@ main()
                ball_velocity.y = -ball_velocity.y;
                ball_disturbed = true;
             }
-            if (new_ball_translate.y < -1.0f)
+            if (new_ball_translate.y < -1.1f - ball_half_radius)
                game_over = true;
 
             if (ball_translate.y >= player_translate.y)
             {
                v2 ball_player_diff = new_ball_translate - player_translate;
-               if (abs(ball_player_diff.x) <= player_half_body_width + ball_half_radius &&
-                   abs(ball_player_diff.y) <= player_half_body_height + ball_half_radius)
+               if (abs(ball_player_diff.x) <= player_body_half_width + ball_half_radius &&
+                   abs(ball_player_diff.y) <= player_body_half_height + ball_half_radius)
                {
-                  float bounce_x = ball_player_diff.x + player_half_body_width;
+                  float bounce_x = ball_player_diff.x + player_body_half_width;
                   int segment_index = (int)(bounce_x / player_segment_length);
                   if (segment_index < 0) segment_index = 0;
                   if (segment_index >= PLAYER_SEGMENTS) segment_index = PLAYER_SEGMENTS-1;
@@ -352,11 +364,13 @@ main()
             if (!ball_disturbed)
                ball_translate = new_ball_translate;
 
+            // Moving player could bump into the ball. In that case disconnect two bodies
+            // by just teleporting the ball a little further.
             if (ball_translate.y >= player_translate.y)
             {
                v2 ball_player_diff = ball_translate - player_translate;
-               if (abs(ball_player_diff.x) <= player_half_body_width + ball_half_radius &&
-                   abs(ball_player_diff.y) <= player_half_body_height + ball_half_radius)
+               if (abs(ball_player_diff.x) <= player_body_half_width + ball_half_radius &&
+                   abs(ball_player_diff.y) <= player_body_half_height + ball_half_radius)
                {
                   v2 tv = ball_player_diff / ball_velocity;
                   assert(tv.x >= 0.0f && tv.y >= 0.0f);
@@ -372,7 +386,7 @@ main()
             // TODO(hobrzut): Extract into common function ([initialize_game]).
             float eps = 0.001f;
             ball_translate.x = player_translate.x;
-            ball_translate.y = player_translate.y + player_half_body_height + ball_half_radius + eps;
+            ball_translate.y = player_translate.y + player_body_half_height + ball_half_radius + eps;
          }
 
          GL_CALL(glClear(GL_COLOR_BUFFER_BIT));
@@ -386,12 +400,14 @@ main()
          // Draw player.
          GL_CALL(glUseProgram(player_shader));
          GL_CALL(glBindVertexArray(player_vao));
+         GL_CALL(glUniform2f(player_shader_scale_uniform, player_body_half_width, player_body_half_height));
          GL_CALL(glUniform2f(player_shader_translate_uniform, player_translate.x, player_translate.y));
          GL_CALL(glDrawArrays(GL_TRIANGLE_STRIP, 0, 4));
 
          // Draw ball.
          GL_CALL(glUseProgram(ball_shader));
          GL_CALL(glBindVertexArray(ball_vao));
+         GL_CALL(glUniform1f(ball_shader_radius_uniform, ball_half_radius));
          GL_CALL(glUniform2f(ball_shader_translate_uniform, ball_translate.x, ball_translate.y));
          GL_CALL(glDrawArrays(GL_TRIANGLE_STRIP, 0, 4));
 
