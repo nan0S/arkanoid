@@ -12,6 +12,21 @@ using v2 = glm::vec2;
 
 #define min(a, b) a < b ? a : b;
 
+// TODO(hobrzut): Remove this duplication.
+template<typename Lambda>
+struct Scope_guard
+{
+   Scope_guard(Lambda &&lambda) : lambda(std::forward<Lambda>(lambda)) {}
+   ~Scope_guard() { lambda(); }
+
+   Lambda lambda;
+};
+
+#define DO_CONCAT(a, b) a##b
+#define CONCAT(a, b) DO_CONCAT(a, b)
+#define UNIQUENAME( prefix ) CONCAT(prefix, __COUNTER__)
+#define defer Scope_guard UNIQUENAME(sg) = [&]()
+
 void
 window_resize_handler(GLFWwindow *, int width, int height)
 {
@@ -64,6 +79,14 @@ inline v2
 v2_from_angle(float a)
 {
    return { cosf(a), sinf(a) };
+}
+
+template<typename T>
+void swap(T &a, T &b)
+{
+   T c = std::move(a);
+   a = std::move(b);
+   b = std::move(c);
 }
 
 int
@@ -141,11 +164,22 @@ main()
       return EXIT_FAILURE;
    }
 
+   GLuint block_shader = Graphics::load_shaders(
+         "../shader/block_vertex.glsl",
+         "../shader/block_fragment.glsl");
+
+   if (!block_shader)
+   {
+      fprintf(stderr, "Failed to load block shader.\n");
+      return EXIT_FAILURE;
+   }
+
    GL_CALL(GLint bg_shader_time_uniform = glGetUniformLocation(bg_shader, "time"));
    GL_CALL(GLint player_shader_translate_uniform = glGetUniformLocation(player_shader, "translate"));
    GL_CALL(GLint player_shader_scale_uniform = glGetUniformLocation(player_shader, "scale"));
    GL_CALL(GLint ball_shader_translate_uniform = glGetUniformLocation(ball_shader, "translate"));
    GL_CALL(GLint ball_shader_radius_uniform = glGetUniformLocation(ball_shader, "radius"));
+   GL_CALL(GLint block_shader_scale_uniform = glGetUniformLocation(block_shader, "scale"));
 
    // TODO(hobrzut): Maybe get rid of square and use instancing.
    v2 square[] = {
@@ -217,36 +251,77 @@ main()
    }
 
    GLuint board_vao;
+   GLuint board_vbo;
+   int num_blocks;
+   float block_half_width;
+   float block_half_height;
+   v2 *block_translations;
    {
-      int num_rows = 8;
+      int num_rows = 9;
       int num_cols = 9;
+      num_blocks = 9;
       const char *board_text =
-         "...XXX..."
-         "...XXX..."
-         "...XXX..."
          "........."
          "........."
+         "........."
+         "...XXX..."
+         "...XXX..."
+         "...XXX..."
          "........."
          "........."
          ".........";
 
-      int num_blocks = num_rows * num_cols;
-      vec2 *block_positions = (vec2 *)malloc(num_blocks * sizeof(vec2));
+      block_translations = (v2 *)malloc(num_blocks * sizeof(v2));
+
+      float screen_width = 2.0f;
+      float screen_height = 2.0f;
+      float between_blocks_padding = 0.01f;
+
+      float block_width = (screen_width - (num_cols-1) * between_blocks_padding) / num_cols;
+      float block_height = 0.05f;
+      block_half_width = 0.5f * block_width;
+      block_half_height = 0.5f * block_height;
+
+      int index = 0;
+      int block_index = 0;
 
       for (int row = 0; row < num_rows; ++row)
       {
          for (int col = 0; col < num_cols; ++col)
          {
+            if (board_text[index] == 'X')
+            {
+               float pos_x = -1.0f + (col + 0.5f) * block_width + col * between_blocks_padding;
+               float pos_y = 1.0f - (row + 0.5f) * block_height - row * between_blocks_padding;
+
+               block_translations[block_index].x = pos_x;
+               block_translations[block_index].y = pos_y;
+
+               ++block_index;
+            }
+
+            ++index;
          }
       }
 
       GL_CALL(glGenVertexArrays(1, &board_vao));
       GL_CALL(glBindVertexArray(board_vao));
 
-      GLuint vbo;
-      GL_CALL(glGenBuffers(1, &vbo));
-      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, vbo));
-      GL_CALL(glBufferData(GL_ARRAY_BUFFER, ));
+      GLuint square_vbo;
+      GL_CALL(glGenBuffers(1, &square_vbo));
+      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, square_vbo));
+      GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(square), square, GL_STATIC_DRAW));
+
+      GL_CALL(glEnableVertexAttribArray(0));
+      GL_CALL(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0));
+
+      GL_CALL(glGenBuffers(1, &board_vbo));
+      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, board_vbo));
+      GL_CALL(glBufferData(GL_ARRAY_BUFFER, num_blocks * sizeof(v2), block_translations, GL_STATIC_DRAW));
+
+      GL_CALL(glEnableVertexAttribArray(1));
+      GL_CALL(glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0));
+      GL_CALL(glVertexAttribDivisor(1, 1));
    }
 
    float bg_time = 0.0f;
@@ -343,6 +418,35 @@ main()
             if (new_ball_translate.y < -1.1f - ball_half_radius)
                game_over = true;
 
+            for (int i = 0; i < num_blocks; ++i)
+            {
+               v2 ball_block_diff = new_ball_translate - block_translations[i];
+               float abs_diff_x = abs(ball_block_diff.x);
+               float abs_diff_y = abs(ball_block_diff.y);
+               float extent_x = block_half_width + ball_half_radius;
+               float extent_y = block_half_height + ball_half_radius;
+
+               if (abs_diff_x <= extent_x && abs_diff_y <= extent_y)
+               {
+                  float scaled_x = abs_diff_x / (block_half_width + ball_half_radius);
+                  float scaled_y = abs_diff_y / (block_half_height + ball_half_radius);
+
+                  if (scaled_x < scaled_y)
+                     ball_velocity.y = -ball_velocity.y;
+                  else
+                     ball_velocity.x = -ball_velocity.x;
+
+                  ball_disturbed = true;
+
+                  swap(block_translations[i], block_translations[--num_blocks]);
+
+                  GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, board_vbo));
+                  GL_CALL(glBufferData(GL_ARRAY_BUFFER, num_blocks * sizeof(v2), block_translations, GL_STATIC_DRAW));
+
+                  break;
+               }
+            }
+
             if (ball_translate.y >= player_translate.y)
             {
                v2 ball_player_diff = new_ball_translate - player_translate;
@@ -411,6 +515,14 @@ main()
          GL_CALL(glUniform2f(ball_shader_translate_uniform, ball_translate.x, ball_translate.y));
          GL_CALL(glDrawArrays(GL_TRIANGLE_STRIP, 0, 4));
 
+         // Draw blocks.
+         GL_CALL(glUseProgram(block_shader));
+         GL_CALL(glBindVertexArray(board_vao));
+         GL_CALL(glUniform2f(block_shader_scale_uniform, block_half_width, block_half_height));
+         GL_CALL(glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, num_blocks));
+
+         GL_CALL(glBindVertexArray(0));
+
          glfwSwapBuffers(window);
 
          if (game_over || restart_requested) initialize_game();
@@ -418,7 +530,7 @@ main()
 
       delta_time = glfwGetTime() - begin_time;
 
-      printf("Frame took %.3fms\n", delta_time * 1000);
+      printf("\rFrame took %.3fms", delta_time * 1000);
    }
 
    return EXIT_SUCCESS;
