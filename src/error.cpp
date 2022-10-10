@@ -1,7 +1,3 @@
-#include "error.h"
-
-#include <stdio.h>
-
 bool
 gl_log_error(const char *call, const char *file, int line)
 {

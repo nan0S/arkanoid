@@ -1,16 +1,11 @@
 CC = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra
+CXXFLAGS = -std=c++17 -Wall -Wextra -O0
 LIBS = -lGLEW -lGL -lglfw -lGLU
 
-arkanoid: arkanoid.o shader.o error.o
-	$(CC) $(CXXFLAGS) -o arkanoid $^ $(LIBS)
-
-%.o: %.cpp
-	$(CC) $(CXXFLAGS) -c -o $@ $<
+arkanoid: arkanoid.cpp
+	$(CC) $(CXXFLAGS) -o $@ $^ $(LIBS)
 
 clean:
-	rm -rf *.o
-distclean: clean
-	rm -f arkanoid
+	rm arkanoid
 
 .PHONY: clean

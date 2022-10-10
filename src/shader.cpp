@@ -1,25 +1,5 @@
-#include "shader.h"
-
+// TODO(hobrzut): Remove that.
 #include <stdio.h>
-#include <malloc.h>
-#include <utility>
-
-#include "error.h"
-
-// TODO(hobrzut): Move it to a better place.
-template<typename Lambda>
-struct Scope_guard
-{
-   Scope_guard(Lambda &&lambda) : lambda(std::forward<Lambda>(lambda)) {}
-   ~Scope_guard() { lambda(); }
-
-   Lambda lambda;
-};
-
-#define DO_CONCAT(a, b) a##b
-#define CONCAT(a, b) DO_CONCAT(a, b)
-#define UNIQUENAME( prefix ) CONCAT(prefix, __COUNTER__)
-#define defer Scope_guard UNIQUENAME(sg) = [&]()
 
 namespace Graphics
 {
