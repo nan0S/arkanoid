@@ -40,21 +40,58 @@ gl_log_error(const char *call, const char *file, int line)
    return no_error;
 }
 
-struct Level_info
-{
-   i32 num_levels;
-   char **level_paths;
-
-   i32 current_level_index;
-   char *board;
-   i32 num_rows;
-   i32 num_cols;
-   i32 num_blocks;
-};
-
 i32
 main()
 {
+   Levels_data levels_data = {};
+   {
+      const char *levels_dir = "../levels/";
+      size_t levels_dir_length = strlen(levels_dir);
+
+      FILE *all_levels_file = fopen("../levels/all_levels.txt", "r");
+      if (!all_levels_file)
+      {
+         fprintf(stderr, "Failed to open file with all levels: '%s'.\n", strerror(errno));
+         return EXIT_FAILURE;
+      }
+
+      defer { fclose(all_levels_file); };
+
+      char *line_buffer = 0;
+      size_t buffer_length = 0;
+      size_t line_length;
+
+      i32 level_paths_array_capacity = 1;
+      levels_data.num_levels = 0;
+      levels_data.level_paths = (char **)malloc(level_paths_array_capacity * sizeof(char *));
+
+      while ((line_length = getline(&line_buffer, &buffer_length, all_levels_file)) != -1)
+      {
+         if (line_buffer[line_length-1] == '\n')
+            line_buffer[--line_length] = 0;
+
+         size_t level_path_length = levels_dir_length + line_length;
+         char *level_path = (char *)malloc((level_path_length+1) * sizeof(char));
+         memcpy(level_path, levels_dir, levels_dir_length * sizeof(char));
+         strcpy(level_path + levels_dir_length, line_buffer);
+
+         if (levels_data.num_levels == level_paths_array_capacity)
+         {
+            level_paths_array_capacity *= 2;
+            levels_data.level_paths = (char **)realloc(levels_data.level_paths, level_paths_array_capacity * sizeof(char *));
+         }
+
+         assert(levels_data.num_levels < level_paths_array_capacity);
+
+         levels_data.level_paths[levels_data.num_levels++] = level_path;
+      }
+
+      free(line_buffer);
+
+      if (levels_data.num_levels < level_paths_array_capacity)
+         levels_data.level_paths = (char **)realloc(levels_data.level_paths, levels_data.num_levels * sizeof(char *));
+   }
+
    if (!glfwInit())
    {
       fprintf(stderr, "Failed to initialize GLFW.\n");
@@ -212,59 +249,11 @@ main()
       GL_CALL(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0));
    }
 
-   Level_info level_info = {};
+   auto load_level_of_index = [](i32 level_index, Levels_data *levels_data)
    {
-      const char *levels_dir = "../levels/";
-      size_t levels_dir_length = strlen(levels_dir);
+      assert(level_index < levels_data->num_levels);
 
-      FILE *all_levels_file = fopen("../levels/all_levels.txt", "r");
-      if (!all_levels_file)
-      {
-         fprintf(stderr, "Failed to open file with all levels: '%s'.\n", strerror(errno));
-         return EXIT_FAILURE;
-      }
-
-      defer { fclose(all_levels_file); };
-
-      char *line_buffer = 0;
-      size_t buffer_length = 0;
-      size_t line_length;
-
-      i32 level_paths_array_capacity = 1;
-      level_info.num_levels = 0;
-      level_info.level_paths = (char **)malloc(level_paths_array_capacity * sizeof(char *));
-
-      while ((line_length = getline(&line_buffer, &buffer_length, all_levels_file)) != -1)
-      {
-         if (line_buffer[line_length-1] == '\n')
-            line_buffer[--line_length] = 0;
-
-         size_t level_path_length = levels_dir_length + line_length;
-         char *level_path = (char *)malloc((level_path_length+1) * sizeof(char));
-         memcpy(level_path, levels_dir, levels_dir_length * sizeof(char));
-         strcpy(level_path + levels_dir_length, line_buffer);
-
-         if (level_info.num_levels == level_paths_array_capacity)
-         {
-            level_paths_array_capacity *= 2;
-            level_info.level_paths = (char **)realloc(level_info.level_paths, level_paths_array_capacity * sizeof(char *));
-         }
-
-         assert(level_info.num_levels < level_paths_array_capacity);
-
-         level_info.level_paths[level_info.num_levels++] = level_path;
-      }
-
-      free(line_buffer);
-
-      level_info.level_paths = (char **)realloc(level_info.level_paths, level_info.num_levels * sizeof(char *));
-   }
-
-   auto load_level_of_index = [](i32 level_index, Level_info *level_info)
-   {
-      assert(level_index < level_info->num_levels);
-
-      char *level_path = level_info->level_paths[0];
+      char *level_path = levels_data->level_paths[0];
       FILE *level_file = fopen(level_path, "r");
 
       if (!level_file)
@@ -281,13 +270,13 @@ main()
       rewind(level_file);
 
       // TODO(hobrzut): Improve here in case of failure.
-      level_info->current_level_index = level_index;
-      level_info->board = (char *)realloc(level_info->board, level_file_length * sizeof(char));
-      level_info->num_rows = 0;
-      level_info->num_cols = 0;
-      level_info->num_blocks = 0;
+      levels_data->current_level_index = level_index;
+      levels_data->board = (char *)realloc(levels_data->board, level_file_length * sizeof(char));
+      levels_data->num_rows = 0;
+      levels_data->num_cols = 0;
+      levels_data->num_blocks = 0;
 
-      char *board_it = level_info->board;
+      char *board_it = levels_data->board;
       char *line_buffer = 0;
       size_t buffer_length = 0;
       size_t line_length;
@@ -303,7 +292,7 @@ main()
             switch (c)
             {
                case 'X':
-                  ++level_info->num_blocks;
+                  ++levels_data->num_blocks;
                   break;
                case '.':
                   break;
@@ -314,9 +303,9 @@ main()
             }
          }
 
-         if (level_info->num_cols == 0)
-            level_info->num_cols = line_length;
-         else if (level_info->num_cols != line_length)
+         if (levels_data->num_cols == 0)
+            levels_data->num_cols = line_length;
+         else if (levels_data->num_cols != line_length)
          {
             // TODO(hobrzut): Handle error.
             fprintf(stderr, "Level file '%s' is broken: 'inconsistent number of columns'.\n", level_path);
@@ -326,14 +315,14 @@ main()
          memcpy(board_it, line_buffer, line_length * sizeof(char));
          board_it += line_length;
 
-         ++level_info->num_rows;
+         ++levels_data->num_rows;
       }
 
       free(line_buffer);
    };
 
    // TODO(hobrzut): Untangle that.
-   load_level_of_index(0, &level_info);
+   load_level_of_index(0, &levels_data);
 
    GLuint board_vao;
    GLuint board_vbo;
@@ -342,14 +331,14 @@ main()
    f32 block_half_height;
    v2 *block_translations;
    {
-      num_remaining_blocks = level_info.num_blocks;
+      num_remaining_blocks = levels_data.num_blocks;
       block_translations = (v2 *)malloc(num_remaining_blocks * sizeof(v2));
 
       f32 screen_width = 2.0f;
       f32 screen_height = 2.0f;
       f32 between_blocks_padding = 0.01f;
 
-      f32 block_width = (screen_width - (level_info.num_cols-1) * between_blocks_padding) / level_info.num_cols;
+      f32 block_width = (screen_width - (levels_data.num_cols-1) * between_blocks_padding) / levels_data.num_cols;
       f32 block_height = 0.05f;
 
       block_half_width = 0.5f * block_width;
@@ -358,11 +347,11 @@ main()
       i32 index = 0;
       i32 block_index = 0;
 
-      for (i32 row = 0; row < level_info.num_rows; ++row)
+      for (i32 row = 0; row < levels_data.num_rows; ++row)
       {
-         for (i32 col = 0; col < level_info.num_cols; ++col)
+         for (i32 col = 0; col < levels_data.num_cols; ++col)
          {
-            if (level_info.board[index] == 'X')
+            if (levels_data.board[index] == 'X')
             {
                f32 pos_x = -1.0f + (col + 0.5f) * block_width + col * between_blocks_padding;
                f32 pos_y = 1.0f - (row + 0.5f) * block_height - row * between_blocks_padding;
@@ -614,8 +603,8 @@ main()
          {
             if (next_level)
             {
-               i32 next_level_index = (level_info.current_level_index+1) % level_info.num_levels;
-               load_level_of_index(next_level_index, &level_info);
+               i32 next_level_index = (levels_data.current_level_index+1) % levels_data.num_levels;
+               load_level_of_index(next_level_index, &levels_data);
             }
 
             initialize_game();

@@ -45,6 +45,31 @@ struct Scope_guard
 #define GL_CALL(x) x
 #endif
 
+struct Levels_data
+{
+   i32 num_levels;
+   char **level_paths;
+};
+
+struct Level_state
+{
+   i32 current_level_index;
+
+   char *board;
+
+   i32 num_rows;
+   i32 num_cols;
+   i32 num_blocks;
+};
+
+template<typename T>
+struct Array
+{
+   T *data;
+   i32 length;
+   i32 capacity;
+};
+
 bool
 gl_log_error(const char *call, const char *file, int line);
 
