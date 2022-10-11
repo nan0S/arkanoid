@@ -2,5 +2,3 @@
 *.o
 *.orig
 arkanoid
-arkanoid2
-compile_commands.json
