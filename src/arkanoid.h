@@ -74,6 +74,7 @@ struct Level_state
 {
    i32 num_remaining_blocks;
    v2 *block_translations;
+
    f32 block_half_width;
    f32 block_half_height;
 
