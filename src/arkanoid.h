@@ -128,11 +128,14 @@ bool
 gl_log_error(const char *call, const char *file, int line);
 
 void
-ball_follow_paddle(Ball *ball, Paddle *paddle);
+initialize_game(Game_state *game_state, Paddle *paddle, Ball *ball, Level_state *level_state);
 
 Load_level_status_code
 load_level(Loaded_level *loaded_level, i32 level_index, Levels_data *levels_data);
 void
 free_level(Loaded_level *loaded_level);
+
+void
+ball_follow_paddle(Ball *ball, Paddle *paddle);
 
 #endif

@@ -41,11 +41,57 @@ gl_log_error(const char *call, const char *file, int line)
 }
 
 void
-ball_follow_paddle(Ball *ball, Paddle *paddle)
+initialize_game(Game_state *game_state, Paddle *paddle, Ball *ball, Level_state *level_state)
 {
-   f32 eps = 0.001f;
-   ball->translate.x = paddle->translate.x;
-   ball->translate.y = paddle->translate.y + paddle->body_half_height + ball->half_radius + eps;
+   paddle->translate = V2(0.0f, -0.86f);
+
+   f32 velocity_angle = random_between(0.25f, 0.75f) * M_PI;
+   ball->velocity = v2_of_angle(velocity_angle);
+   ball_follow_paddle(ball, paddle);
+
+   game_state->started = false;
+
+   Loaded_level *loaded_level = &game_state->loaded_level;
+   level_state->num_remaining_blocks = loaded_level->num_blocks;
+   level_state->block_translations = (v2 *)malloc(level_state->num_remaining_blocks * sizeof(v2));
+
+   f32 screen_width = 2.0f;
+   f32 between_blocks_padding = 0.01f;
+
+   f32 block_width = (screen_width - (loaded_level->num_cols-1) * between_blocks_padding) / loaded_level->num_cols;
+   f32 block_height = 0.05f;
+
+   level_state->block_half_width = 0.5f * block_width;
+   level_state->block_half_height = 0.5f * block_height;
+
+   i32 index = 0;
+   i32 block_index = 0;
+
+   for (i32 row = 0; row < loaded_level->num_rows; ++row)
+   {
+      for (i32 col = 0; col < loaded_level->num_cols; ++col)
+      {
+         if (loaded_level->board[index] == 'X')
+         {
+            f32 pos_x = -1.0f + (col + 0.5f) * block_width + col * between_blocks_padding;
+            f32 pos_y = 1.0f - (row + 0.5f) * block_height - row * between_blocks_padding;
+
+            level_state->block_translations[block_index].x = pos_x;
+            level_state->block_translations[block_index].y = pos_y;
+
+            ++block_index;
+         }
+
+         ++index;
+      }
+   }
+
+   GL_CALL(glBindVertexArray(level_state->vao));
+   GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, level_state->vbo));
+   GL_CALL(glBufferData(GL_ARRAY_BUFFER,
+            level_state->num_remaining_blocks * sizeof(v2),
+            level_state->block_translations,
+            GL_STATIC_DRAW));
 }
 
 Load_level_status_code
@@ -90,16 +136,18 @@ load_level(Loaded_level *loaded_level, i32 level_index, Levels_data *levels_data
 
          ++loaded_level->num_rows;
       }
+
+      return LOAD_LEVEL_SUCCESS;
    };
 
    assert(0 <= level_index);
-   assert(level_index < Levels_data->num_levels);
+   assert(level_index < levels_data->num_levels);
 
-   char *level_path = levels_data[level_index];
+   char *level_path = levels_data->level_paths[level_index];
    FILE *level_file = fopen(level_path, "r");
 
    if (!level_file)
-      return LOAD_LEVEL_RETURN_CODE_OPEN_FILE_ERROR;
+      return LOAD_LEVEL_OPEN_FILE_ERROR;
 
    defer { fclose(level_file); };
 
@@ -110,7 +158,7 @@ load_level(Loaded_level *loaded_level, i32 level_index, Levels_data *levels_data
    loaded_level->num_rows = 0;
    loaded_level->num_cols = 0;
    loaded_level->num_blocks = 0;
-   loaded_level->board = malloc(level.board, level_file_length * sizeof(char));
+   loaded_level->board = (char *)malloc(level_file_length * sizeof(char));
 
    auto ret = do_load_level(loaded_level, level_file);
    if (ret != LOAD_LEVEL_SUCCESS)
@@ -126,58 +174,11 @@ free_level(Loaded_level *loaded_level)
 }
 
 void
-initialize_game(Game_state *game_state, Ball *ball, Paddle *paddle, Level_state *level_state)
+ball_follow_paddle(Ball *ball, Paddle *paddle)
 {
-   paddle->translate = V2(0.0f, -0.86f);
-
-   f32 velocity_angle = random_between(0.25f, 0.75f) * M_PI;
-   ball->velocity = v2_of_angle(velocity_angle);
-   ball_follow_paddle(ball, paddle);
-
-   game_state->started = false;
-
-   Loaded_level *loaded_level = &game_state.loaded_level;
-   level_state->num_remaining_blocks = loaded_level->num_blocks;
-   level_state->block_translations = (v2 *)malloc(level_state->num_remaining_blocks * sizeof(v2));
-
-   f32 screen_width = 2.0f;
-   f32 screen_height = 2.0f;
-   f32 between_blocks_padding = 0.01f;
-
-   f32 block_width = (screen_width - (loaded_level->num_cols-1) * between_blocks_padding) / loaded_level->num_cols;
-   f32 block_height = 0.05f;
-
-   level_state->block_half_width = 0.5f * block_width;
-   level_state->block_half_height = 0.5f * block_height;
-
-   i32 index = 0;
-   i32 block_index = 0;
-
-   for (i32 row = 0; row < loaded_level->num_rows; ++row)
-   {
-      for (i32 col = 0; col < loaded_level->num_cols; ++col)
-      {
-         if (loaded_level->board[index] == 'X')
-         {
-            f32 pos_x = -1.0f + (col + 0.5f) * block_width + col * between_blocks_padding;
-            f32 pos_y = 1.0f - (row + 0.5f) * block_height - row * between_blocks_padding;
-
-            level_state->block_translations[block_index].x = pos_x;
-            level_state->block_translations[block_index].y = pos_y;
-
-            ++block_index;
-         }
-
-         ++index;
-      }
-   }
-
-   GL_CALL(glBindVertexArray(level_state->vao));
-   GL_CALL(glBindBuffer(level_state->vbo));
-   GL_CALL(glBufferData(GL_ARRAY_BUFFER,
-            level_state->num_remaining_blocks * sizeof(v2),
-            level_state->block_translations,
-            GL_STATIC_DRAW));
+   f32 eps = 0.001f;
+   ball->translate.x = paddle->translate.x;
+   ball->translate.y = paddle->translate.y + paddle->body_half_height + ball->half_radius + eps;
 }
 
 i32
@@ -396,27 +397,6 @@ main()
       ball.half_radius = 0.5f * ball.radius;
    }
 
-   Level_state level_state;
-   {
-      GL_CALL(glGenVertexArrays(1, &level.vao));
-      GL_CALL(glBindVertexArray(level.vao));
-
-      GLuint square_vbo;
-      GL_CALL(glGenBuffers(1, &square_vbo));
-      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, square_vbo));
-      GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(square), square, GL_STATIC_DRAW));
-
-      GL_CALL(glEnableVertexAttribArray(0));
-      GL_CALL(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0));
-
-      GL_CALL(glGenBuffers(1, &board_vbo));
-      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, board_vbo));
-
-      GL_CALL(glEnableVertexAttribArray(1));
-      GL_CALL(glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0));
-      GL_CALL(glVertexAttribDivisor(1, 1));
-   }
-
    Game_state game_state;
    {
       game_state.paused = false;
@@ -426,7 +406,28 @@ main()
       game_state.loaded_level_index = 0;
    }
 
-   initialize_game(&game_state, &ball, &paddle, &level_state);
+   Level_state level_state;
+   {
+      GL_CALL(glGenVertexArrays(1, &level_state.vao));
+      GL_CALL(glBindVertexArray(level_state.vao));
+
+      GLuint square_vbo;
+      GL_CALL(glGenBuffers(1, &square_vbo));
+      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, square_vbo));
+      GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(square), square, GL_STATIC_DRAW));
+
+      GL_CALL(glEnableVertexAttribArray(0));
+      GL_CALL(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0));
+
+      GL_CALL(glGenBuffers(1, &level_state.vbo));
+      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, level_state.vbo));
+
+      GL_CALL(glEnableVertexAttribArray(1));
+      GL_CALL(glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0));
+      GL_CALL(glVertexAttribDivisor(1, 1));
+   }
+
+   initialize_game(&game_state, &paddle, &ball, &level_state);
 
    f32 bg_time = 0.0f;
    f32 delta_time = 0.0f;
@@ -434,7 +435,7 @@ main()
 
    while (!glfwWindowShouldClose(window))
    {
-      if (paused) glfwWaitEvents();
+      if (game_state.paused) glfwWaitEvents();
       else glfwPollEvents();
 
       if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS ||
@@ -443,10 +444,10 @@ main()
 
       i32 p_button_state = glfwGetKey(window, GLFW_KEY_P);
       if (p_button_last_state == GLFW_RELEASE &&  p_button_state == GLFW_PRESS)
-         paused = !paused;
+         game_state.paused = !game_state.paused;
       p_button_last_state = p_button_state;
 
-      if (paused)
+      if (game_state.paused)
          continue;
 
       f32 begin_time = glfwGetTime();
@@ -457,7 +458,7 @@ main()
          bool next_level = false;
 
          if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-            started = true;
+            game_state.started = true;
          if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
             restart_requested = true;
 
@@ -485,25 +486,25 @@ main()
 
          if (game_state.started)
          {
-            v2 new_ball.translate = ball.translate + delta_time * ball.speed * ball.velocity;
+            v2 new_ball_translate = ball.translate + delta_time * ball.speed * ball.velocity;
             bool ball_disturbed = false;
 
-            if (new_ball.translate.x < -1.0f || new_ball.translate.x > 1.0f)
+            if (new_ball_translate.x < -1.0f || new_ball_translate.x > 1.0f)
             {
                ball.velocity.x = -ball.velocity.x;
                ball_disturbed = true;
             }
-            if (new_ball.translate.y > 1.0f)
+            if (new_ball_translate.y > 1.0f)
             {
                ball.velocity.y = -ball.velocity.y;
                ball_disturbed = true;
             }
-            if (new_ball.translate.y < -1.1f - ball.half_radius)
+            if (new_ball_translate.y < -1.1f - ball.half_radius)
                game_over = true;
 
             for (i32 i = 0; i < level_state.num_remaining_blocks; ++i)
             {
-               v2 ball_block_diff = new_ball.translate - level_state.block_translations[i];
+               v2 ball_block_diff = new_ball_translate - level_state.block_translations[i];
                f32 abs_diff_x = abs(ball_block_diff.x);
                f32 abs_diff_y = abs(ball_block_diff.y);
                f32 extent_x = level_state.block_half_width + ball.half_radius;
@@ -540,7 +541,7 @@ main()
 
             if (ball.translate.y >= paddle.translate.y)
             {
-               v2 ball_player_diff = new_ball.translate - paddle.translate;
+               v2 ball_player_diff = new_ball_translate - paddle.translate;
                if (abs(ball_player_diff.x) <= paddle.body_half_width + ball.half_radius &&
                    abs(ball_player_diff.y) <= paddle.body_half_height + ball.half_radius)
                {
@@ -558,7 +559,7 @@ main()
             }
 
             if (!ball_disturbed)
-               ball.translate = new_ball.translate;
+               ball.translate = new_ball_translate;
 
             // Moving player could bump into the ball. In that case disconnect two bodies
             // by just teleporting the ball a little further.
@@ -616,11 +617,16 @@ main()
          {
             if (next_level)
             {
-               i32 next_level_index = (levels_data.current_level_index+1) % levels_data.num_levels;
-               load_level_of_index(next_level_index, &levels_data);
+               free_level(&game_state.loaded_level);
+               free(level_state.block_translations);
+
+               i32 next_level_index = (game_state.loaded_level_index+1) % levels_data.num_levels;
+               auto status = load_level(&game_state.loaded_level, next_level_index, &levels_data);
+               assert(status == LOAD_LEVEL_SUCCESS);
+               game_state.loaded_level_index = next_level_index;
             }
 
-            initialize_game();
+            initialize_game(&game_state, &paddle, &ball, &level_state);
          }
       }
 
