@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <assert.h>
 
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+
 typedef int8_t i8;
 typedef int16_t i16;
 typedef int32_t i32;
@@ -51,26 +54,85 @@ struct Levels_data
    char **level_paths;
 };
 
-struct Level_state
+struct Loaded_level
 {
-   i32 current_level_index;
-
    char *board;
-
    i32 num_rows;
    i32 num_cols;
    i32 num_blocks;
 };
 
-template<typename T>
-struct Array
+enum Load_level_status_code
 {
-   T *data;
-   i32 length;
-   i32 capacity;
+   LOAD_LEVEL_SUCCESS,
+   LOAD_LEVEL_OPEN_FILE_ERROR,
+   LOAD_LEVEL_UNKNOWN_CHAR_ERROR,
+   LOAD_LEVEL_INCONSISTENT_NUM_OF_COLS_ERROR
+};
+
+struct Level_state
+{
+   i32 num_remaining_blocks;
+   v2 *block_translations;
+   f32 block_half_width;
+   f32 block_half_height;
+
+   GLuint vao;
+   GLuint vbo;
+};
+
+struct Background
+{
+   GLuint vao;
+};
+
+struct Paddle
+{
+   GLuint vao;
+
+   v2 translate;
+   f32 speed;
+
+   f32 body_width;
+   f32 body_height;
+   f32 body_half_width;
+   f32 body_half_height;
+
+   static const i32 NUM_SEGMENTS = 6;
+   f32 segment_length;
+   f32 segment_bounce_angles[NUM_SEGMENTS];
+};
+
+struct Ball
+{
+   GLuint vao;
+
+   v2 translate;
+   f32 speed;
+   v2 velocity;
+
+   f32 radius;
+   f32 half_radius;
+};
+
+struct Game_state
+{
+   bool paused;
+   bool started;
+
+   i32 loaded_level_index;
+   Loaded_level loaded_level;
 };
 
 bool
 gl_log_error(const char *call, const char *file, int line);
+
+void
+ball_follow_paddle(Ball *ball, Paddle *paddle);
+
+Load_level_status_code
+load_level(Loaded_level *loaded_level, i32 level_index, Levels_data *levels_data);
+void
+free_level(Loaded_level *loaded_level);
 
 #endif
