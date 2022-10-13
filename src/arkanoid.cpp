@@ -370,7 +370,7 @@ main()
       {
          bool game_over = false;
          bool restart_requested = false;
-         bool next_level = false;
+         bool level_complete = false;
 
          if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
             game_state.started = true;
@@ -439,7 +439,7 @@ main()
                   swap(level->block_translations[i], level->block_translations[--game_state.num_remaining_blocks]);
 
                   if (game_state.num_remaining_blocks == 0)
-                     next_level = true;
+                     level_complete = true;
                   else
                   {
                      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, level->vbo));
@@ -526,11 +526,14 @@ main()
 
          glfwSwapBuffers(window);
 
-         if (game_over || restart_requested || next_level)
+         if (game_over || restart_requested || level_complete)
          {
-            if (next_level)
+            if (level_complete)
             {
-               i32 next_level_index = (game_state.level_index + 1) % all_levels_data.num_levels;
+               i32 next_level_index = game_state.level_index + 1;
+               if (next_level_index == all_levels_data.num_levels)
+                  break;
+
                game_state.level_index = next_level_index;
                game_state.level = &all_levels_data.levels[game_state.level_index];
             }
