@@ -1,6 +1,3 @@
-// TODO(hobrzut): Remove that.
-#include <stdio.h>
-
 namespace Graphics
 {
 

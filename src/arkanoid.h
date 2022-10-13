@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <assert.h>
+#include <malloc.h>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -22,9 +23,9 @@ typedef double f64;
 #include "random.h"
 #include "shader.h"
 
-#define min(a, b) a < b ? a : b;
-#define max(a, b) a < b ? b : a;
-#define swap(a, b) { auto &aa = a, &bb = b; auto tmp = aa; aa = bb; bb = tmp; }
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) < (b) ? (b) : (a))
+#define swap(a, b) { auto &aa = (a), &bb = (b); auto tmp = aa; aa = bb; bb = tmp; }
 
 #define PI32 3.14159265359f
 
@@ -42,37 +43,71 @@ struct Scope_guard
 #define UNIQUENAME( prefix ) CONCAT(prefix, __COUNTER__)
 #define defer Scope_guard UNIQUENAME(sg) = [&]()
 
+template<typename T>
+struct Array
+{
+   T *data;
+   i32 length;
+   i32 capacity;
+
+   T* begin() { return data; }
+   T* end() { return data + length; }
+   T& operator[](i32 index) { return data[index]; }
+};
+
+template<typename T>
+Array<T>
+array_create(i32 length = 0)
+{
+   Array<T> arr;
+   arr.length = length;
+   arr.capacity = length;
+
+   if (length)
+      arr.data = (T *)malloc(length * sizeof(T));
+   else
+      arr.data = 0;
+
+   return arr;
+}
+
+#include <stdio.h>
+template<typename T>
+void
+array_add(Array<T> *arr, T elem)
+{
+   assert(arr->length <= arr->capacity);
+
+   if (arr->length == arr->capacity)
+   {
+      if (arr->capacity == 0) arr->capacity = 1;
+      else arr->capacity *= 2;
+      arr->data = (T *)realloc(arr->data, arr->capacity * sizeof(T));
+   }
+
+   arr->data[arr->length++] = elem;
+}
+
+template<typename T>
+void
+array_free(Array<T> arr)
+{
+   if (arr.data)
+      free(arr.data);
+}
+
 #ifndef ARKANOID_SLOW
 #define GL_CALL(x) while (glGetError() != GL_NO_ERROR); x; assert(gl_log_error(#x, __FILE__, __LINE__))
 #else
 #define GL_CALL(x) x
 #endif
 
-struct Levels_data
-{
-   i32 num_levels;
-   char **level_paths;
-};
-
 struct Loaded_level
 {
-   char *board;
    i32 num_rows;
    i32 num_cols;
    i32 num_blocks;
-};
 
-enum Load_level_status_code
-{
-   LOAD_LEVEL_SUCCESS,
-   LOAD_LEVEL_OPEN_FILE_ERROR,
-   LOAD_LEVEL_UNKNOWN_CHAR_ERROR,
-   LOAD_LEVEL_INCONSISTENT_NUM_OF_COLS_ERROR
-};
-
-struct Level_state
-{
-   i32 num_remaining_blocks;
    v2 *block_translations;
 
    f32 block_half_width;
@@ -80,6 +115,12 @@ struct Level_state
 
    GLuint vao;
    GLuint vbo;
+};
+
+struct Loaded_levels
+{
+   i32 num_levels;
+   Loaded_level *levels;
 };
 
 struct Background
@@ -121,20 +162,16 @@ struct Game_state
    bool paused;
    bool started;
 
-   i32 loaded_level_index;
-   Loaded_level loaded_level;
+   i32 level_index;
+   Loaded_level *level;
+   i32 num_remaining_blocks;
 };
 
 bool
 gl_log_error(const char *call, const char *file, int line);
 
 void
-initialize_game(Game_state *game_state, Paddle *paddle, Ball *ball, Level_state *level_state);
-
-Load_level_status_code
-load_level(Loaded_level *loaded_level, i32 level_index, Levels_data *levels_data);
-void
-free_level(Loaded_level *loaded_level);
+initialize_game(Game_state *game_state, Paddle *paddle, Ball *ball);
 
 void
 ball_follow_paddle(Ball *ball, Paddle *paddle);
