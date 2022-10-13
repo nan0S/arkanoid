@@ -1,3 +1,0 @@
-./test2.txt
-./test1.txt
-./test3.txt

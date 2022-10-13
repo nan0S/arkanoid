@@ -45,11 +45,11 @@ initialize_game(Game_state *game_state, Paddle *paddle, Ball *ball)
 {
    paddle->translate = V2(0.0f, -0.86f);
 
-   f32 velocity_angle = random_between(0.25f, 0.75f) * M_PI;
+   f32 velocity_angle = random_between(0.25f, 0.75f) * PI32;
    ball->velocity = v2_of_angle(velocity_angle);
    ball_follow_paddle(ball, paddle);
 
-   Loaded_level *level = game_state->level;
+   Level *level = game_state->level;
    assert(level);
 
    game_state->started = false;
@@ -114,40 +114,28 @@ main()
       return EXIT_FAILURE;
    }
 
-   GLuint bg_shader = Graphics::load_shaders(
-         "../shader/background_vertex.glsl",
-         "../shader/background_fragment.glsl");
-
+   GLuint bg_shader = Graphics::compile_shaders(background_vertex_code, background_fragment_code);
    if (!bg_shader)
    {
       fprintf(stderr, "Failed to load background shader.\n");
       return EXIT_FAILURE;
    }
 
-   GLuint player_shader = Graphics::load_shaders(
-         "../shader/player_vertex.glsl",
-         "../shader/player_fragment.glsl");
-
-   if (!player_shader)
+   GLuint paddle_shader = Graphics::compile_shaders(paddle_vertex_code, paddle_fragment_code);
+   if (!paddle_shader)
    {
-      fprintf(stderr, "Failed to load player shader.\n");
+      fprintf(stderr, "Failed to load paddle shader.\n");
       return EXIT_FAILURE;
    }
 
-   GLuint ball_shader = Graphics::load_shaders(
-         "../shader/ball_vertex.glsl",
-         "../shader/ball_fragment.glsl");
-
+   GLuint ball_shader = Graphics::compile_shaders(ball_vertex_code, ball_fragment_code);
    if (!ball_shader)
    {
       fprintf(stderr, "Failed to load ball shader.\n");
       return EXIT_FAILURE;
    }
 
-   GLuint block_shader = Graphics::load_shaders(
-         "../shader/block_vertex.glsl",
-         "../shader/block_fragment.glsl");
-
+   GLuint block_shader = Graphics::compile_shaders(block_vertex_code, block_fragment_code);
    if (!block_shader)
    {
       fprintf(stderr, "Failed to load block shader.\n");
@@ -155,8 +143,8 @@ main()
    }
 
    GL_CALL(GLint bg_shader_time_uniform = glGetUniformLocation(bg_shader, "time"));
-   GL_CALL(GLint player_shader_translate_uniform = glGetUniformLocation(player_shader, "translate"));
-   GL_CALL(GLint player_shader_scale_uniform = glGetUniformLocation(player_shader, "scale"));
+   GL_CALL(GLint paddle_shader_translate_uniform = glGetUniformLocation(paddle_shader, "translate"));
+   GL_CALL(GLint paddle_shader_scale_uniform = glGetUniformLocation(paddle_shader, "scale"));
    GL_CALL(GLint ball_shader_translate_uniform = glGetUniformLocation(ball_shader, "translate"));
    GL_CALL(GLint ball_shader_radius_uniform = glGetUniformLocation(ball_shader, "radius"));
    GL_CALL(GLint block_shader_scale_uniform = glGetUniformLocation(block_shader, "scale"));
@@ -236,129 +224,62 @@ main()
       ball.half_radius = 0.5f * ball.radius;
    }
 
-   Loaded_levels loaded_levels;
+   All_levels_data all_levels_data;
    {
-      auto relative_level_paths_array = array_create<char*>();
-      defer { array_free(relative_level_paths_array); };
+      all_levels_data.num_levels = num_levels;
+      all_levels_data.levels = (Level *)malloc(all_levels_data.num_levels * sizeof(Level));
+
+      for (i32 level_index = 0; level_index < all_levels_data.num_levels; ++level_index)
       {
-         FILE *all_levels_file = fopen("../levels/all_levels.txt", "r");
-         if (!all_levels_file)
-         {
-            fprintf(stderr, "Failed to open file with all levels: '%s'.\n", strerror(errno));
-            return EXIT_FAILURE;
-         }
-
-         defer { fclose(all_levels_file); };
-
-         char *line_buffer = 0;
-         size_t buffer_length = 0;
-         size_t line_length;
-         defer { free(line_buffer); };
-
-         while ((line_length = getline(&line_buffer, &buffer_length, all_levels_file)) != (size_t)-1)
-         {
-            if (line_buffer[line_length-1] == '\n')
-               line_buffer[--line_length] = 0;
-
-            char *relative_level_path = strdup(line_buffer);
-            array_add(&relative_level_paths_array, relative_level_path);
-         }
-      }
-
-      const char *all_levels_dir = "../levels/";
-      size_t all_levels_dir_length = strlen(all_levels_dir);
-
-      char *board_buffer = 0;
-      i32 board_buffer_length = 0;
-      defer { if (board_buffer) free(board_buffer); };
-
-      char *level_path_buffer = 0;
-      size_t level_path_buffer_length  = 0;
-      defer { if (level_path_buffer) free(level_path_buffer); };
-
-      loaded_levels.num_levels = relative_level_paths_array.length;
-      loaded_levels.levels = (Loaded_level *)malloc(loaded_levels.num_levels * sizeof(Loaded_levels));
-
-      for (i32 i = 0; i < relative_level_paths_array.length; ++i)
-      {
-         char *relative_level_path = relative_level_paths_array[i];
-         Loaded_level *level = &loaded_levels.levels[i];
-
-         size_t relative_level_path_length = strlen(relative_level_path);
-         size_t level_path_length = all_levels_dir_length + relative_level_path_length;
-
-         if (level_path_length > level_path_buffer_length)
-         {
-            level_path_buffer_length = level_path_length;
-            level_path_buffer = (char *)realloc(level_path_buffer, level_path_buffer_length * sizeof(char));
-         }
-
-         char *level_path = level_path_buffer;
-         memcpy(level_path, all_levels_dir, all_levels_dir_length * sizeof(char));
-         strcpy(level_path + all_levels_dir_length, relative_level_path);
-
-         FILE *level_file = fopen(level_path, "r");
-         if (!level_file)
-         {
-            fprintf(stderr, "Failed to open level file '%s': %s.\n", level_path, strerror(errno));
-            return EXIT_FAILURE;
-         }
-
-         defer { fclose(level_file); };
-
-         fseek(level_file, SEEK_SET, SEEK_END);
-         long level_file_length = ftell(level_file);
-         rewind(level_file);
-
-         if (level_file_length > board_buffer_length)
-         {
-            board_buffer_length = level_file_length;
-            board_buffer = (char *)realloc(board_buffer, board_buffer_length * sizeof(char));
-         }
-
+         Level *level = &all_levels_data.levels[level_index];
          level->num_rows = 0;
          level->num_cols = 0;
          level->num_blocks = 0;
 
-         char *board_it = board_buffer;
-         char *line_buffer = 0;
-         size_t buffer_length = 0;
-         size_t line_length;
+         const char *level_text = all_levels[level_index];
+         i32 level_text_index = 0;
+         char symbol;
+         i32 num_cols = 0;
 
-         while ((line_length = getline(&line_buffer, &buffer_length, level_file)) != (size_t)-1)
+         if (level_text[0] == BOARD_SYMBOL_NEW_ROW)
+            ++level_text;
+
+         while ((symbol = level_text[level_text_index++]))
          {
-            if (line_buffer[line_length-1] == '\n')
-               --line_length;
+            if (symbol != BOARD_SYMBOL_NEW_ROW)
+               ++num_cols;
 
-            for (size_t i = 0; i < line_length; ++i)
+            switch (symbol)
             {
-               char c = line_buffer[i];
-               switch (c)
-               {
-                  case 'X': {
-                     ++level->num_blocks;
-                     break;
-                  }
-                  case '.': break;
-                  default: {
-                     fprintf(stderr, "Unknown character '%c' in level file '%s'.\n", c, level_path);
+               case BOARD_SYMBOL_EMPTY: break;
+               case BOARD_SYMBOL_BLOCK: ++level->num_blocks; break;
+               case BOARD_SYMBOL_NEW_ROW: {
+                  if (!level->num_cols)
+                     level->num_cols = num_cols;
+                  else if (num_cols != level->num_cols)
+                  {
+                     fprintf(stderr, "Inconsitent number of columns in level %d text (row %d, expected %d, actual %d).\n",
+                           level_index+1,
+                           level->num_rows+1,
+                           level->num_cols,
+                           num_cols);
                      return EXIT_FAILURE;
                   }
-               }
+
+                  ++level->num_rows;
+                  num_cols = 0;
+               } break;
+
+               default:
+                  fprintf(stderr, "Unknown character '%c' in level %d text.\n", symbol, level_index+1);
+                  return EXIT_FAILURE;
             }
+         }
 
-            if (level->num_cols == 0)
-               level->num_cols = line_length;
-            else if (level->num_cols != (i32)line_length)
-            {
-               fprintf(stderr, "Inconsitent number of columns in level file '%s'.\n", level_path);
-               return EXIT_FAILURE;
-            }
-
-            memcpy(board_it, line_buffer, line_length * sizeof(char));
-            board_it += line_length;
-
-            ++level->num_rows;
+         if (num_cols)
+         {
+            fprintf(stderr, "Expected newline at the end of level %d text.\n", level_index+1);
+            return EXIT_FAILURE;
          }
 
          level->block_translations = (v2 *)malloc(level->num_blocks * sizeof(v2));
@@ -376,9 +297,9 @@ main()
 
          for (i32 row = 0; row < level->num_rows; ++row)
          {
-            for (i32 col = 0; col < level->num_cols; ++col)
+            for (i32 col = 0; col < level->num_cols+1; ++col)
             {
-               if (board_buffer[index] == 'X')
+               if (level_text[index] == BOARD_SYMBOL_BLOCK)
                {
                   f32 pos_x = -1.0f + (col + 0.5f) * block_width + col * between_blocks_padding;
                   f32 pos_y = 1.0f - (row + 0.5f) * block_height - row * between_blocks_padding;
@@ -414,12 +335,11 @@ main()
       }
    }
 
-
    Game_state game_state;
    {
       game_state.paused = false;
       game_state.level_index = 0;
-      game_state.level = &loaded_levels.levels[game_state.level_index];
+      game_state.level = &all_levels_data.levels[game_state.level_index];
    }
 
    initialize_game(&game_state, &paddle, &ball);
@@ -495,7 +415,7 @@ main()
             if (new_ball_translate.y < -1.1f - ball.half_radius)
                game_over = true;
 
-            Loaded_level *level = game_state.level;
+            Level *level = game_state.level;
             for (i32 i = 0; i < game_state.num_remaining_blocks; ++i)
             {
                v2 ball_block_diff = new_ball_translate - level->block_translations[i];
@@ -585,10 +505,10 @@ main()
          GL_CALL(glDrawArrays(GL_TRIANGLE_STRIP, 0, 4));
 
          // Draw player.
-         GL_CALL(glUseProgram(player_shader));
+         GL_CALL(glUseProgram(paddle_shader));
          GL_CALL(glBindVertexArray(paddle.vao));
-         GL_CALL(glUniform2f(player_shader_scale_uniform, paddle.body_half_width, paddle.body_half_height));
-         GL_CALL(glUniform2f(player_shader_translate_uniform, paddle.translate.x, paddle.translate.y));
+         GL_CALL(glUniform2f(paddle_shader_scale_uniform, paddle.body_half_width, paddle.body_half_height));
+         GL_CALL(glUniform2f(paddle_shader_translate_uniform, paddle.translate.x, paddle.translate.y));
          GL_CALL(glDrawArrays(GL_TRIANGLE_STRIP, 0, 4));
 
          // Draw ball.
@@ -610,9 +530,9 @@ main()
          {
             if (next_level)
             {
-               i32 next_level_index = (game_state.level_index + 1) % loaded_levels.num_levels;
+               i32 next_level_index = (game_state.level_index + 1) % all_levels_data.num_levels;
                game_state.level_index = next_level_index;
-               game_state.level = &loaded_levels.levels[game_state.level_index];
+               game_state.level = &all_levels_data.levels[game_state.level_index];
             }
 
             initialize_game(&game_state, &paddle, &ball);

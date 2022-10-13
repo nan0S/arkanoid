@@ -22,6 +22,8 @@ typedef double f64;
 #include "math.h"
 #include "random.h"
 #include "shader.h"
+#include "levels.h"
+#include "shaders.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) < (b) ? (b) : (a))
@@ -71,7 +73,6 @@ array_create(i32 length = 0)
    return arr;
 }
 
-#include <stdio.h>
 template<typename T>
 void
 array_add(Array<T> *arr, T elem)
@@ -102,7 +103,7 @@ array_free(Array<T> arr)
 #define GL_CALL(x) x
 #endif
 
-struct Loaded_level
+struct Level
 {
    i32 num_rows;
    i32 num_cols;
@@ -117,10 +118,10 @@ struct Loaded_level
    GLuint vbo;
 };
 
-struct Loaded_levels
+struct All_levels_data
 {
+   Level *levels;
    i32 num_levels;
-   Loaded_level *levels;
 };
 
 struct Background
@@ -163,7 +164,7 @@ struct Game_state
    bool started;
 
    i32 level_index;
-   Loaded_level *level;
+   Level *level;
    i32 num_remaining_blocks;
 };
 
