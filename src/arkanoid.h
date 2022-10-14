@@ -24,6 +24,7 @@ typedef double f64;
 #include "shader.h"
 #include "levels.h"
 #include "shaders.h"
+#include "colors.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) < (b) ? (b) : (a))
@@ -103,13 +104,27 @@ array_free(Array<T> arr)
 #define GL_CALL(x) x
 #endif
 
+enum Collectable_type
+{
+   COLLECTABLE_TYPE_NONE = 0,
+   COLLECTABLE_TYPE_LONG_PADDLE,
+   COLLECTABLE_TYPE_SHORT_PADDLE,
+   COLLECTABLE_TYPE_FAST_BALL,
+   COLLECTABLE_TYPE_SLOW_BALL,
+   COLLECTABLE_TYPE_BALL_SPLIT,
+};
+
 struct Level
 {
+   void *allocated_memory;
+
    i32 num_rows;
    i32 num_cols;
-   i32 num_blocks;
 
-   v2 *block_translations;
+   i32 num_blocks;
+   Collectable_type *collectable_types;
+   v2 *translations;
+   v3 *colors;
 
    f32 block_half_width;
    f32 block_half_height;
@@ -131,8 +146,6 @@ struct Background
 
 struct Paddle
 {
-   GLuint vao;
-
    v2 translate;
    f32 speed;
 
@@ -144,37 +157,82 @@ struct Paddle
    static const i32 NUM_SEGMENTS = 6;
    f32 segment_length;
    f32 segment_bounce_angles[NUM_SEGMENTS];
+
+   GLuint vao;
 };
 
 struct Ball
 {
-   GLuint vao;
-
    v2 translate;
    f32 speed;
    v2 velocity;
 
    f32 radius;
    f32 half_radius;
+
+   GLuint vao;
+};
+
+struct Collectables
+{
+   static const i32 MAX_NUM_COLLECTABLES = 50;
+   i32 num_collectables;
+
+   Collectable_type types[MAX_NUM_COLLECTABLES];
+   v2 translations[MAX_NUM_COLLECTABLES];
+   v3 colors[MAX_NUM_COLLECTABLES];
+
+   f32 fall_speed;
+
+   f32 body_width;
+   f32 body_height;
+   f32 body_half_width;
+   f32 body_half_height;
+
+   GLuint vao;
+   GLuint vbo;
+};
+
+enum Wait_event
+{
+   WAIT_EVENT_NONE = 0,
+   WAIT_EVENT_NEXT_LEVEL,
+   WAIT_EVENT_GAME_OVER,
 };
 
 struct Game_state
 {
+   All_levels_data all_levels_data;
+   Paddle          paddle;
+   Ball            ball;
+   Collectables    collectables;
+
    bool paused;
    bool started;
 
    i32 level_index;
    Level *level;
-   i32 num_remaining_blocks;
+   i32 num_blocks_left;
+
+   Wait_event wait_event;
+   f32 wait_time_left;
+
+   static const i32 INITIAL_LIVES = 3;
+   i32 lives_left;
 };
 
 bool
 gl_log_error(const char *call, const char *file, int line);
 
 void
-initialize_game(Game_state *game_state, Paddle *paddle, Ball *ball);
+change_level(Game_state *game_state, i32 new_level_index);
+void
+restart_level_maintaining_destroyed_blocks(Game_state *game_state);
 
 void
 ball_follow_paddle(Ball *ball, Paddle *paddle);
+
+void
+remove_collectable(i32 index, Collectables *collectables);
 
 #endif

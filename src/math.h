@@ -117,4 +117,23 @@ v2_of_angle(f32 a)
    return { cosf(a), sinf(a) };
 }
 
+union v3
+{
+   struct
+   {
+      f32 x, y, z;
+   };
+   struct
+   {
+      f32 r, g, b;
+   };
+   f32 p[3];
+};
+
+inline v3
+V3(f32 x, f32 y, f32 z)
+{
+   return { x, y, z };
+}
+
 #endif

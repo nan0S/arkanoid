@@ -130,23 +130,30 @@ const char *block_vertex_code = R"FOO(
 
 layout(location = 0) in vec2 i_position;
 layout(location = 1) in vec2 i_translate;
+layout(location = 2) in vec3 i_color;
+
+out vec3 v_color;
 
 uniform vec2 scale;
 
 void main()
 {
    gl_Position = vec4(scale * i_position + i_translate, 0.0f, 1.0f);
+   v_color = i_color;
 }
 )FOO";
 
 const char *block_fragment_code = R"FOO(
 #version 330 core
 
+in vec3 v_color;
+
 out vec4 f_color;
 
 void main()
 {
-   f_color = vec4(244.0f/255, 192.0f/255, 149.0f/255, 1.0f);
+   //f_color = vec4(244.0f/255, 192.0f/255, 149.0f/255, 1.0f);
+   f_color = vec4(v_color, 1.0f);
 }
 )FOO";
 
