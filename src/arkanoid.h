@@ -122,15 +122,16 @@ struct Level
    i32 num_cols;
 
    i32 num_blocks;
-   Collectable_type *collectable_types;
    v2 *translations;
    v3 *colors;
+   Collectable_type *collectable_types;
 
    f32 block_half_width;
    f32 block_half_height;
 
    GLuint vao;
    GLuint vbo;
+   GLsizeiptr vbo_allocated_size;
 };
 
 struct All_levels_data
@@ -149,12 +150,14 @@ struct Paddle
    v2 translate;
    f32 speed;
 
-   f32 body_width;
-   f32 body_height;
+   static constexpr f32 NORMAL_BODY_WIDTH = 0.2f;
+   static constexpr f32 SHORT_BODY_WIDTH = 0.1f;
+   static constexpr f32 LONG_BODY_WIDTH = 0.4f;
+
    f32 body_half_width;
    f32 body_half_height;
 
-   static const i32 NUM_SEGMENTS = 6;
+   static constexpr i32 NUM_SEGMENTS = 6;
    f32 segment_length;
    f32 segment_bounce_angles[NUM_SEGMENTS];
 
@@ -163,6 +166,10 @@ struct Paddle
 
 struct Ball
 {
+   static constexpr f32 NORMAL_SPEED = 1.6f;
+   static constexpr f32 FAST_SPEED = 1.8f;
+   static constexpr f32 SLOW_SPEED = 1.3f;
+
    v2 translate;
    f32 speed;
    v2 velocity;
@@ -184,8 +191,6 @@ struct Collectables
 
    f32 fall_speed;
 
-   f32 body_width;
-   f32 body_height;
    f32 body_half_width;
    f32 body_half_height;
 
@@ -233,6 +238,11 @@ void
 ball_follow_paddle(Ball *ball, Paddle *paddle);
 
 void
-remove_collectable(i32 index, Collectables *collectables);
+add_collectable(Collectables *collectables, i32 index);
+void
+remove_collectable(Collectables *collectables, i32 index);
+
+void
+set_paddle_width(Paddle *paddle, f32 new_width);
 
 #endif

@@ -66,10 +66,14 @@ restart_level_maintaining_destroyed_blocks(Game_state *game_state)
    game_state->wait_event = WAIT_EVENT_NONE;
 
    game_state->paddle.translate = V2(0.0f, -0.86f);
+   game_state->paddle.body_half_width = 0.5f * Paddle::NORMAL_BODY_WIDTH;
 
+   game_state->ball.speed = Ball::NORMAL_SPEED;
    f32 velocity_angle = random_between(0.25f, 0.75f) * PI32;
    game_state->ball.velocity = v2_of_angle(velocity_angle);
    ball_follow_paddle(&game_state->ball, &game_state->paddle);
+
+   game_state->collectables.num_collectables = 0;
 }
 
 void
@@ -78,6 +82,12 @@ ball_follow_paddle(Ball *ball, Paddle *paddle)
    f32 eps = 0.001f;
    ball->translate.x = paddle->translate.x;
    ball->translate.y = paddle->translate.y + paddle->body_half_height + ball->half_radius + eps;
+}
+
+void
+set_paddle_width(Paddle *paddle, f32 new_width)
+{
+   paddle->body_half_width = 0.5f * new_width;
 }
 
 void
@@ -114,7 +124,7 @@ add_collectable(Collectables *collectables, Collectable_type type, v2 translatio
    collectables->translations[index] = translation;
    collectables->colors[index] = color;
 
-   collectables->num_collectables = index;
+   collectables->num_collectables = index+1;
 }
 
 void
@@ -233,6 +243,7 @@ main()
    }
 
    Game_state game_state;
+
    All_levels_data *all_levels_data = &game_state.all_levels_data;
    {
       all_levels_data->num_levels = num_levels;
@@ -245,15 +256,16 @@ main()
          level->num_cols = 0;
          level->num_blocks = 0;
 
-         const char *level_text = all_levels[level_index];
-         i32 level_text_index = 0;
+         const char *level_symbols = all_levels[level_index];
+         i32 level_symbols_index = 0;
          char symbol;
          i32 num_cols = 0;
 
-         if (level_text[0] == BOARD_SYMBOL_NEW_ROW)
-            ++level_text;
+         // Allow that so that board is more readable.
+         if (level_symbols[0] == BOARD_SYMBOL_NEW_ROW)
+            ++level_symbols;
 
-         while ((symbol = level_text[level_text_index++]))
+         while ((symbol = level_symbols[level_symbols_index++]))
          {
             if (symbol != BOARD_SYMBOL_NEW_ROW)
                ++num_cols;
@@ -300,11 +312,12 @@ main()
             return EXIT_FAILURE;
          }
 
-         i32 total_num_bytes = level->num_blocks * (sizeof(Collectable_type) + sizeof(v2) + sizeof(v3));
+         size_t total_num_bytes = level->num_blocks * (sizeof(Collectable_type) + sizeof(v2) + sizeof(v3));
          level->allocated_memory = malloc(total_num_bytes);
-         level->collectable_types = (Collectable_type *)level->allocated_memory;
-         level->translations = (v2 *)(level->collectable_types + level->num_blocks);
-         level->colors = (v3 *)(level->colors + level->num_blocks);
+
+         level->translations = (v2 *)level->allocated_memory;
+         level->colors = (v3 *)(level->translations + level->num_blocks);
+         level->collectable_types = (Collectable_type *)(level->colors + level->num_blocks);
 
          f32 screen_width = 2.0f;
          f32 between_blocks_padding = 0.01f;
@@ -323,7 +336,7 @@ main()
             {
                bool is_block = true;
 
-               switch (level_text[index])
+               switch (level_symbols[index])
                {
                   case BOARD_SYMBOL_BLOCK_NORMAL: {
                      level->collectable_types[block_index] = COLLECTABLE_TYPE_NONE;
@@ -376,24 +389,25 @@ main()
          GL_CALL(glEnableVertexAttribArray(0));
          GL_CALL(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0));
 
+         // translations ..., colors ...
+         GLsizeiptr translations_size = level->num_blocks * sizeof(v2);
+         GLsizeiptr colors_size = level->num_blocks * sizeof(v3);
+         GLsizeiptr allocation_size = translations_size + colors_size;
+         GLsizeiptr translations_offset = 0;
+         GLsizeiptr colors_offset = translations_size;
+
          GL_CALL(glGenBuffers(1, &level->vbo));
          GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, level->vbo));
-         GL_CALL(glBufferData(GL_ARRAY_BUFFER,
-                  level->num_blocks * (sizeof(v2) + sizeof(v3)),
-                  0,
-                  GL_STATIC_DRAW));
+         GL_CALL(glBufferData(GL_ARRAY_BUFFER, allocation_size, 0, GL_STATIC_DRAW));
+
+         level->vbo_allocated_size = allocation_size;
 
          GL_CALL(glEnableVertexAttribArray(1));
-         GL_CALL(glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0));
+         GL_CALL(glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (const void *)translations_offset));
          GL_CALL(glVertexAttribDivisor(1, 1));
 
          GL_CALL(glEnableVertexAttribArray(2));
-         GL_CALL(glVertexAttribPointer(2,
-                  3,
-                  GL_FLOAT,
-                  GL_FALSE,
-                  0,
-                  (const void *)(level->num_blocks * sizeof(v2))));
+         GL_CALL(glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (const void *)colors_offset));
          GL_CALL(glVertexAttribDivisor(2, 1));
       }
    }
@@ -403,11 +417,12 @@ main()
       paddle->translate = V2(0.0f, 0.0f);
       paddle->speed = 2.0f;
 
-      paddle->body_width = 0.2f;
-      paddle->body_height = 0.035f;
-      paddle->body_half_width = 0.5f * paddle->body_width;
-      paddle->body_half_height = 0.5f * paddle->body_height;
-      paddle->segment_length = paddle->body_width / paddle->NUM_SEGMENTS;
+      f32 body_width = 0.2f;
+      f32 body_height = 0.035f;
+
+      paddle->body_half_width = 0.5f * body_width;
+      paddle->body_half_height = 0.5f * body_height;
+      paddle->segment_length = body_width / paddle->NUM_SEGMENTS;
 
       f32 deg_to_rad = PI32 / 180;
       paddle->segment_bounce_angles[0] = 140 * deg_to_rad;
@@ -420,9 +435,9 @@ main()
       glGenVertexArrays(1, &paddle->vao);
       glBindVertexArray(paddle->vao);
 
-      GLuint vbo;
-      GL_CALL(glGenBuffers(1, &vbo));
-      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, vbo));
+      GLuint square_vbo;
+      GL_CALL(glGenBuffers(1, &square_vbo));
+      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, square_vbo));
       GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(square), square, GL_STATIC_DRAW));
 
       GL_CALL(glEnableVertexAttribArray(0));
@@ -432,7 +447,7 @@ main()
    Ball *ball = &game_state.ball;
    {
       ball->translate = V2(0.0f, 0.0f);
-      ball->speed = 1.6f;
+      ball->speed = Ball::NORMAL_SPEED;
       ball->velocity = V2(0.0f, 0.0f);
 
       ball->radius = 0.025f;
@@ -442,9 +457,9 @@ main()
       GL_CALL(glGenVertexArrays(1, &ball->vao));
       GL_CALL(glBindVertexArray(ball->vao));
 
-      GLuint vbo;
-      GL_CALL(glGenBuffers(1, &vbo));
-      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, vbo));
+      GLuint square_vbo;
+      GL_CALL(glGenBuffers(1, &square_vbo));
+      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, square_vbo));
       GL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(square), square, GL_STATIC_DRAW));
 
       GL_CALL(glEnableVertexAttribArray(0));
@@ -455,10 +470,11 @@ main()
    {
       collectables->num_collectables = 0;
       collectables->fall_speed = 0.5f;
-      collectables->body_width = 0.1f;
-      collectables->body_height = 0.05f;
-      collectables->body_half_width = 0.5f * collectables->body_width;
-      collectables->body_half_height = 0.5f * collectables->body_height;
+
+      f32 body_width = 0.1f;
+      f32 body_height = 0.05f;
+      collectables->body_half_width = 0.5f * body_width;
+      collectables->body_half_height = 0.5f * body_height;
 
       GL_CALL(glGenVertexArrays(1, &collectables->vao));
       GL_CALL(glBindVertexArray(collectables->vao));
@@ -471,25 +487,23 @@ main()
       GL_CALL(glEnableVertexAttribArray(0));
       GL_CALL(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0));
 
+      GLsizeiptr translations_size = collectables->MAX_NUM_COLLECTABLES * sizeof(v2);
+      GLsizeiptr colors_size = collectables->MAX_NUM_COLLECTABLES * sizeof(v3);
+      GLsizeiptr allocation_size = translations_size + colors_size;
+      GLsizeiptr translations_offset = 0;
+      GLsizeiptr colors_offset = translations_size;
+
       GL_CALL(glGenBuffers(1, &collectables->vbo));
       GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, collectables->vbo));
-      GL_CALL(glBufferData(GL_ARRAY_BUFFER,
-               collectables->MAX_NUM_COLLECTABLES * (sizeof(v2) + sizeof(v3)),
-               // TODO(hobrzut): Change to dynamic draw?
-               0,
-               GL_STATIC_DRAW));
+      // TODO(hobrzut): Change to DYNAMIC_DRAW?
+      GL_CALL(glBufferData(GL_ARRAY_BUFFER, allocation_size, 0, GL_STATIC_DRAW));
 
       GL_CALL(glEnableVertexAttribArray(1));
-      GL_CALL(glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0));
+      GL_CALL(glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (const void *)translations_offset));
       GL_CALL(glVertexAttribDivisor(1, 1));
 
       GL_CALL(glEnableVertexAttribArray(2));
-      GL_CALL(glVertexAttribPointer(2,
-               2,
-               GL_FLOAT,
-               GL_FALSE,
-               0,
-               (const void *)(collectables->MAX_NUM_COLLECTABLES * sizeof(v2))));
+      GL_CALL(glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (const void *)colors_offset));
       GL_CALL(glVertexAttribDivisor(2, 1));
    }
 
@@ -533,10 +547,6 @@ main()
          if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
             restart_requested = true;
 
-         // TODO(hobrzut): Remove that.
-         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) ball->speed = 0.01f;
-         else ball->speed = 1.6f;
-
          f32 paddle_velocity_x = 0.0f;
          if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
             paddle_velocity_x -= paddle->speed;
@@ -565,12 +575,20 @@ main()
                {
                   switch (collectables->types[i])
                   {
-                     case COLLECTABLE_TYPE_LONG_PADDLE:
-                     case COLLECTABLE_TYPE_SHORT_PADDLE:
-                     case COLLECTABLE_TYPE_FAST_BALL:
-                     case COLLECTABLE_TYPE_SLOW_BALL:
-                     case COLLECTABLE_TYPE_BALL_SPLIT:
-                        break;
+                     case COLLECTABLE_TYPE_LONG_PADDLE: {
+                        paddle->body_half_width = 0.5f * Paddle::LONG_BODY_WIDTH;
+                     } break;
+                     case COLLECTABLE_TYPE_SHORT_PADDLE: {
+                        paddle->body_half_width = 0.5f * Paddle::SHORT_BODY_WIDTH;
+                     } break;
+                     case COLLECTABLE_TYPE_FAST_BALL: {
+                        ball->speed = Ball::FAST_SPEED;
+                     } break;
+                     case COLLECTABLE_TYPE_SLOW_BALL: {
+                        ball->speed = Ball::SLOW_SPEED;
+                     } break;
+                     case COLLECTABLE_TYPE_BALL_SPLIT: {
+                     } break;
 
                      default:
                         assert(false);
@@ -639,10 +657,7 @@ main()
                   {
                      GL_CALL(glBindVertexArray(level->vao));
                      GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, level->vbo));
-                     GL_CALL(glBufferSubData(GL_ARRAY_BUFFER,
-                              0,
-                              game_state.num_blocks_left * (sizeof(v2) + sizeof(v3)),
-                              level->allocated_memory));
+                     GL_CALL(glBufferSubData(GL_ARRAY_BUFFER, 0, level->vbo_allocated_size, level->allocated_memory));
                   }
 
                   break;
@@ -689,7 +704,6 @@ main()
             }
 
             // Update collectables' buffers.
-            // TODO(hobrzut): Move to one place.
             GL_CALL(glBindVertexArray(collectables->vao));
             GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, collectables->vbo));
             GL_CALL(glBufferSubData(GL_ARRAY_BUFFER,
@@ -773,13 +787,6 @@ main()
       GL_CALL(glUniform2f(paddle_shader_translate_uniform, paddle->translate.x, paddle->translate.y));
       GL_CALL(glDrawArrays(GL_TRIANGLE_STRIP, 0, 4));
 
-      // Draw ball.
-      GL_CALL(glUseProgram(ball_shader));
-      GL_CALL(glBindVertexArray(ball->vao));
-      GL_CALL(glUniform1f(ball_shader_radius_uniform, ball->half_radius));
-      GL_CALL(glUniform2f(ball_shader_translate_uniform, ball->translate.x, ball->translate.y));
-      GL_CALL(glDrawArrays(GL_TRIANGLE_STRIP, 0, 4));
-
       // Draw blocks.
       GL_CALL(glUseProgram(block_shader));
       GL_CALL(glBindVertexArray(game_state.level->vao));
@@ -791,6 +798,13 @@ main()
       GL_CALL(glBindVertexArray(collectables->vao));
       GL_CALL(glUniform2f(block_shader_scale_uniform, collectables->body_half_width, collectables->body_half_height));
       GL_CALL(glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, collectables->num_collectables));
+
+      // Draw ball.
+      GL_CALL(glUseProgram(ball_shader));
+      GL_CALL(glBindVertexArray(ball->vao));
+      GL_CALL(glUniform1f(ball_shader_radius_uniform, ball->half_radius));
+      GL_CALL(glUniform2f(ball_shader_translate_uniform, ball->translate.x, ball->translate.y));
+      GL_CALL(glDrawArrays(GL_TRIANGLE_STRIP, 0, 4));
 
       glfwSwapBuffers(window);
 
